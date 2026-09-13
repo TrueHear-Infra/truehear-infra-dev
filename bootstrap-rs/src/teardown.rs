@@ -93,6 +93,42 @@ pub enum ControllerHost {
     Unreachable,
 }
 
+/// A concrete Kubernetes target: the kind bootstrap context (pre-pivot) or
+/// the self-managed mgmt kubeconfig (post-pivot). Neither relies on the
+/// caller's `kubectl` current-context, so a stale `use-context` cannot
+/// redirect a destructive operation (issue #247).
+#[derive(Debug, Clone, PartialEq)]
+pub enum K8sTarget {
+    /// Pre-pivot: the kind bootstrap cluster, addressed by context name.
+    Kind { context: String },
+    /// Post-pivot: the self-managed management cluster, by kubeconfig path.
+    SelfManaged { kubeconfig: String },
+}
+
+impl K8sTarget {
+    /// `--context` / `--kubeconfig` argv prefix for kubectl and helm.
+    pub fn prefix(&self) -> Vec<String> {
+        match self {
+            K8sTarget::Kind { context } => vec!["--context".into(), context.clone()],
+            K8sTarget::SelfManaged { kubeconfig } => {
+                vec!["--kubeconfig".into(), kubeconfig.clone()]
+            }
+        }
+    }
+}
+
+/// kubectl argv = target prefix + the operation args (owned String form).
+fn kubectl_args(target: &K8sTarget, args: &[&str]) -> Vec<String> {
+    let mut v = target.prefix();
+    v.extend(args.iter().map(|s| s.to_string()));
+    v
+}
+
+/// Borrow helper matching the repo's existing `Vec<String> -> Vec<&str>` idiom.
+fn to_refs(v: &[String]) -> Vec<&str> {
+    v.iter().map(String::as_str).collect()
+}
+
 /// Discover the controller host for the aws environment. Order:
 /// kind cluster present (and reachable) wins (pre-pivot world); then the
 /// mgmt kubeconfig (post-pivot); then unreachable.
@@ -126,6 +162,22 @@ pub async fn discover_controller_host(cfg: &Config) -> ControllerHost {
         return ControllerHost::SelfManaged;
     }
     ControllerHost::Unreachable
+}
+
+/// Map a discovered controller host to the concrete Kubernetes target the
+/// teardown k8s ops bind to (issue #247): kind by context name pre-pivot,
+/// the mgmt kubeconfig post-pivot. Unreachable resolves to None, which the
+/// caller handles as the existing early-return / orphan-sweep path.
+fn resolve_target(host: &ControllerHost, cfg: &Config, tcfg: &TeardownConfig) -> Option<K8sTarget> {
+    match host {
+        ControllerHost::Kind => Some(K8sTarget::Kind {
+            context: cfg.repo.bootstrap.kind_context.clone(),
+        }),
+        ControllerHost::SelfManaged => Some(K8sTarget::SelfManaged {
+            kubeconfig: tcfg.mgmt_kubeconfig.to_string_lossy().into_owned(),
+        }),
+        ControllerHost::Unreachable => None,
+    }
 }
 
 // ── The deletion guard (CLUSTERS_CONFIRMED_GONE / FORCE_KIND_DELETE) ─────────
@@ -171,48 +223,44 @@ impl HostGuard {
 /// recreates deleted resources mid-teardown. Patch failures are warned
 /// (the script's "Could not suspend some Kustomizations – continuing
 /// anyway"), not fatal.
-pub async fn suspend_flux(kubeconfig: Option<&str>) -> Result<()> {
+pub async fn suspend_flux(target: &K8sTarget) -> Result<()> {
+    suspend_flux_with("kubectl", target).await
+}
+
+async fn suspend_flux_with(kubectl: &str, target: &K8sTarget) -> Result<()> {
     println!(">>> Suspending Flux Kustomizations to prevent re-reconciliation...");
-    let names = capture_lossy(
-        "kubectl",
-        &kubectl_cmd(
-            kubeconfig,
-            &[
-                "get",
-                "kustomizations.kustomize.toolkit.fluxcd.io",
-                "-n",
-                "flux-system",
-                "-o",
-                "name",
-            ],
-        ),
-    )
-    .await;
+    let args = kubectl_args(
+        target,
+        &[
+            "get",
+            "kustomizations.kustomize.toolkit.fluxcd.io",
+            "-n",
+            "flux-system",
+            "-o",
+            "name",
+        ],
+    );
+    let names = capture_lossy(kubectl, &to_refs(&args)).await;
     if names.trim().is_empty() {
         println!("!   No Flux Kustomizations found – skipping suspension");
         return Ok(());
     }
     let mut failed = 0;
     for ks in names.lines().filter_map(|l| l.trim().rsplit('/').next()) {
-        if run(
-            "kubectl",
-            &kubectl_cmd(
-                kubeconfig,
-                &[
-                    "patch",
-                    &format!("kustomization/{ks}"),
-                    "-n",
-                    "flux-system",
-                    "--type",
-                    "merge",
-                    "-p",
-                    r#"{"spec":{"suspend":true}}"#,
-                ],
-            ),
-        )
-        .await
-        .is_err()
-        {
+        let args = kubectl_args(
+            target,
+            &[
+                "patch",
+                &format!("kustomization/{ks}"),
+                "-n",
+                "flux-system",
+                "--type",
+                "merge",
+                "-p",
+                r#"{"spec":{"suspend":true}}"#,
+            ],
+        );
+        if run(kubectl, &to_refs(&args)).await.is_err() {
             failed += 1;
         }
     }
@@ -227,44 +275,45 @@ pub async fn suspend_flux(kubeconfig: Option<&str>) -> Result<()> {
 /// full deprovision (containers gone), with the script's refusal when a
 /// cluster refuses to die.
 pub async fn delete_capi_workloads(
-    kubeconfig: Option<&str>,
+    target: &K8sTarget,
+    workloads: &[String],
+    timeout_secs: u64,
+) -> Result<()> {
+    delete_capi_workloads_with("kubectl", target, workloads, timeout_secs).await
+}
+
+async fn delete_capi_workloads_with(
+    kubectl: &str,
+    target: &K8sTarget,
     workloads: &[String],
     timeout_secs: u64,
 ) -> Result<()> {
     for cluster in workloads {
         println!(">>> Deleting CAPD workload cluster '{cluster}'...");
-        let exists = run_quiet(
-            "kubectl",
-            &kubectl_cmd(kubeconfig, &["get", "cluster", cluster, "-n", "default"]),
-        )
-        .await;
+        let args = kubectl_args(target, &["get", "cluster", cluster, "-n", "default"]);
+        let exists = run_quiet(kubectl, &to_refs(&args)).await;
         if !exists {
             println!("!   Cluster '{cluster}' not found – skipping");
             continue;
         }
-        run(
-            "kubectl",
-            &kubectl_cmd(
-                kubeconfig,
-                &[
-                    "delete",
-                    "cluster",
-                    cluster,
-                    "-n",
-                    "default",
-                    "--wait=false",
-                ],
-            ),
-        )
-        .await
-        .with_context(|| format!("failed to delete workload cluster '{cluster}'"))?;
+        let args = kubectl_args(
+            target,
+            &[
+                "delete",
+                "cluster",
+                cluster,
+                "-n",
+                "default",
+                "--wait=false",
+            ],
+        );
+        run(kubectl, &to_refs(&args))
+            .await
+            .with_context(|| format!("failed to delete workload cluster '{cluster}'"))?;
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
         loop {
-            let gone = !run_quiet(
-                "kubectl",
-                &kubectl_cmd(kubeconfig, &["get", "cluster", cluster, "-n", "default"]),
-            )
-            .await;
+            let args = kubectl_args(target, &["get", "cluster", cluster, "-n", "default"]);
+            let gone = !run_quiet(kubectl, &to_refs(&args)).await;
             if gone {
                 println!("✓   CAPD workload cluster '{cluster}' deleted");
                 break;
@@ -285,16 +334,22 @@ pub async fn delete_capi_workloads(
 /// cluster itself (the host), then wait until only the mgmt remains.
 /// Returns true when the workload clusters are confirmed gone.
 pub async fn delete_aws_workload_clusters(
-    kubeconfig: Option<&str>,
+    target: &K8sTarget,
+    mgmt_cluster: &str,
+    timeout_secs: u64,
+) -> Result<bool> {
+    delete_aws_workload_clusters_with("kubectl", target, mgmt_cluster, timeout_secs).await
+}
+
+async fn delete_aws_workload_clusters_with(
+    kubectl: &str,
+    target: &K8sTarget,
     mgmt_cluster: &str,
     timeout_secs: u64,
 ) -> Result<bool> {
     println!(">>> Discovering CAPI Cluster resources...");
-    let listing = capture_lossy(
-        "kubectl",
-        &kubectl_cmd(kubeconfig, &["get", "clusters", "-A", "-o", "name"]),
-    )
-    .await;
+    let args = kubectl_args(target, &["get", "clusters", "-A", "-o", "name"]);
+    let listing = capture_lossy(kubectl, &to_refs(&args)).await;
     let mut workloads: Vec<String> = listing
         .lines()
         .filter_map(|l| l.trim().rsplit('/').next())
@@ -309,30 +364,25 @@ pub async fn delete_aws_workload_clusters(
     }
     for cluster in &workloads {
         println!(">>>   Deleting cluster: {cluster}");
-        let _ = run(
-            "kubectl",
-            &kubectl_cmd(
-                kubeconfig,
-                &["delete", "cluster", cluster, "--ignore-not-found"],
-            ),
-        )
-        .await;
+        let args = kubectl_args(
+            target,
+            &["delete", "cluster", cluster, "--ignore-not-found"],
+        );
+        let _ = run(kubectl, &to_refs(&args)).await;
     }
     println!(">>> Waiting up to {timeout_secs}s for the workload clusters to be deleted...");
     println!(">>> (This typically takes 15–25 minutes while CAPA tears down AWS resources)");
     let start = std::time::Instant::now();
     let deadline = start + std::time::Duration::from_secs(timeout_secs);
     loop {
-        let remaining: Vec<String> = capture_lossy(
-            "kubectl",
-            &kubectl_cmd(kubeconfig, &["get", "clusters", "-A", "-o", "name"]),
-        )
-        .await
-        .lines()
-        .filter_map(|l| l.trim().rsplit('/').next())
-        .filter(|n| *n != mgmt_cluster)
-        .map(String::from)
-        .collect();
+        let args = kubectl_args(target, &["get", "clusters", "-A", "-o", "name"]);
+        let remaining: Vec<String> = capture_lossy(kubectl, &to_refs(&args))
+            .await
+            .lines()
+            .filter_map(|l| l.trim().rsplit('/').next())
+            .filter(|n| *n != mgmt_cluster)
+            .map(String::from)
+            .collect();
         if remaining.is_empty() {
             println!("✓   All CAPI workload clusters deleted");
             return Ok(true);
@@ -1391,7 +1441,11 @@ const NS_NAME_JSONPATH: &str =
 
 /// Step 5: delete CAPI provider CRs (the operator uninstalls the
 /// controllers), then wait up to the timeout.
-pub async fn delete_capi_providers(kubeconfig: Option<&str>, timeout_secs: u64) {
+pub async fn delete_capi_providers(target: &K8sTarget, timeout_secs: u64) {
+    delete_capi_providers_with("kubectl", target, timeout_secs).await
+}
+
+async fn delete_capi_providers_with(kubectl: &str, target: &K8sTarget, timeout_secs: u64) {
     println!(">>> Deleting CAPI providers...");
     let kinds = [
         "addonproviders",
@@ -1405,11 +1459,8 @@ pub async fn delete_capi_providers(kubeconfig: Option<&str>, timeout_secs: u64) 
         let full = format!("{kind}.operator.cluster.x-k8s.io");
         // The script's jsonpath: `ns/name` per line (-o name never
         // includes the namespace for cluster-scoped listings).
-        let listing = capture_lossy(
-            "kubectl",
-            &kubectl_cmd(kubeconfig, &["get", &full, "-A", "-o", NS_NAME_JSONPATH]),
-        )
-        .await;
+        let args = kubectl_args(target, &["get", &full, "-A", "-o", NS_NAME_JSONPATH]);
+        let listing = capture_lossy(kubectl, &to_refs(&args)).await;
         for object in listing.lines().filter_map(|l| {
             let l = l.trim();
             if l.is_empty() {
@@ -1423,14 +1474,11 @@ pub async fn delete_capi_providers(kubeconfig: Option<&str>, timeout_secs: u64) 
                 None => ("default", object),
             };
             println!(">>>   Deleting {kind}: {name} (namespace: {ns})");
-            let _ = run(
-                "kubectl",
-                &kubectl_cmd(
-                    kubeconfig,
-                    &["delete", &full, name, "-n", ns, "--ignore-not-found"],
-                ),
-            )
-            .await;
+            let args = kubectl_args(
+                target,
+                &["delete", &full, name, "-n", ns, "--ignore-not-found"],
+            );
+            let _ = run(kubectl, &to_refs(&args)).await;
             deleted_any = true;
         }
     }
@@ -1444,11 +1492,8 @@ pub async fn delete_capi_providers(kubeconfig: Option<&str>, timeout_secs: u64) 
         let mut remaining = 0;
         for kind in kinds {
             let full = format!("{kind}.operator.cluster.x-k8s.io");
-            let listing = capture_lossy(
-                "kubectl",
-                &kubectl_cmd(kubeconfig, &["get", &full, "-A", "--no-headers"]),
-            )
-            .await;
+            let args = kubectl_args(target, &["get", &full, "-A", "--no-headers"]);
+            let listing = capture_lossy(kubectl, &to_refs(&args)).await;
             remaining += listing.lines().filter(|l| !l.trim().is_empty()).count();
         }
         if remaining == 0 {
@@ -1464,14 +1509,12 @@ pub async fn delete_capi_providers(kubeconfig: Option<&str>, timeout_secs: u64) 
     }
 }
 
-/// Steps 6-8: helm releases then secrets (aws path, kubeconfig threaded).
-pub async fn uninstall_helm_and_secrets(cfg: &Config, kubeconfig: Option<&str>) {
+/// Steps 6-8: helm releases then secrets (aws path, target threaded).
+pub async fn uninstall_helm_and_secrets(cfg: &Config, target: &K8sTarget) {
     for release in ["flux", "flux-operator"] {
         println!(">>> Uninstalling {release} Helm release...");
-        let kc: Vec<&str> = match kubeconfig {
-            Some(k) => vec!["--kubeconfig", k],
-            None => vec![],
-        };
+        let prefix = target.prefix();
+        let kc: Vec<&str> = to_refs(&prefix);
         let status = {
             let mut args = kc.clone();
             args.extend_from_slice(&["status", release, "-n", "flux-system"]);
@@ -1508,21 +1551,18 @@ pub async fn uninstall_helm_and_secrets(cfg: &Config, kubeconfig: Option<&str>) 
         } else {
             ns
         };
-        let _ = run(
-            "kubectl",
-            &kubectl_cmd(
-                kubeconfig,
-                &[
-                    "delete",
-                    "secret",
-                    secret,
-                    "-n",
-                    namespace,
-                    "--ignore-not-found",
-                ],
-            ),
-        )
-        .await;
+        let args = kubectl_args(
+            target,
+            &[
+                "delete",
+                "secret",
+                secret,
+                "-n",
+                namespace,
+                "--ignore-not-found",
+            ],
+        );
+        let _ = run("kubectl", &to_refs(&args)).await;
     }
     println!("✓   Secrets deleted (or were already absent)");
 }
@@ -1680,6 +1720,19 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
             }
         };
 
+        // The krops kubectl calls bind to an explicit target (issue #247):
+        // the kind bootstrap context pre-pivot, the mgmt kubeconfig
+        // post-pivot - never the caller's current context.
+        let target: Option<K8sTarget> = if kind_present {
+            Some(K8sTarget::Kind {
+                context: cfg.repo.bootstrap.kind_context.clone(),
+            })
+        } else {
+            kc.as_ref().map(|k| K8sTarget::SelfManaged {
+                kubeconfig: k.clone(),
+            })
+        };
+
         // Suspend the workload Kustomization (prevents Flux recreating
         // the Cluster while CAPD removes its machines), then delete the
         // workload clusters, then remove the controller host.
@@ -1701,9 +1754,11 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
                 ),
             )
             .await;
-            delete_capi_workloads(Some(kc), &td.capi_workloads, 300).await?;
-        } else if kind_present {
-            delete_capi_workloads(None, &td.capi_workloads, 300).await?;
+            if let Some(target) = &target {
+                delete_capi_workloads(target, &td.capi_workloads, 300).await?;
+            }
+        } else if let Some(target) = &target {
+            delete_capi_workloads(target, &td.capi_workloads, 300).await?;
         } else {
             println!(">>> No reachable management cluster; skipping CAPI workload deletion");
         }
@@ -1767,12 +1822,9 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
         // The CAPI inventory lives in kind pre-pivot, in the management
         // cluster itself post-pivot (same discovery as aws).
         let host = discover_controller_host(cfg).await;
-        let kc: Option<String> = match &host {
-            ControllerHost::Kind => None,
-            ControllerHost::SelfManaged => {
-                Some(tcfg.mgmt_kubeconfig.to_string_lossy().into_owned())
-            }
-            ControllerHost::Unreachable => {
+        let target = match resolve_target(&host, cfg, tcfg) {
+            Some(t) => t,
+            None => {
                 println!(">>> No reachable controller host; nothing to release");
                 println!();
                 println!("✓ Teardown complete.");
@@ -1780,21 +1832,14 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
             }
         };
 
-        if let Some(kc) = kc.as_deref() {
-            suspend_flux(Some(kc)).await?;
-        } else {
-            suspend_flux(None).await?;
-        }
+        suspend_flux(&target).await?;
         // Delete every CAPI Cluster (the management cluster included: its
         // deletion is the release). CAPT deprovisions the machine's CAPI
         // footprint; the Hardware CR stays in the Tinkerbell stack and the
         // node keeps running Talos for the operator.
         let mut clusters_gone = true;
-        let listing = capture_lossy(
-            "kubectl",
-            &kubectl_cmd(kc.as_deref(), &["get", "clusters", "-A", "-o", "name"]),
-        )
-        .await;
+        let args = kubectl_args(&target, &["get", "clusters", "-A", "-o", "name"]);
+        let listing = capture_lossy("kubectl", &to_refs(&args)).await;
         let clusters: Vec<String> = listing
             .lines()
             .filter_map(|l| l.trim().rsplit('/').next())
@@ -1805,14 +1850,11 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
         } else {
             for cluster in &clusters {
                 println!(">>> Deleting CAPI cluster '{cluster}' (Hardware release)...");
-                let _ = run(
-                    "kubectl",
-                    &kubectl_cmd(
-                        kc.as_deref(),
-                        &["delete", "cluster", cluster, "--ignore-not-found"],
-                    ),
-                )
-                .await;
+                let args = kubectl_args(
+                    &target,
+                    &["delete", "cluster", cluster, "--ignore-not-found"],
+                );
+                let _ = run("kubectl", &to_refs(&args)).await;
             }
             println!(
                 ">>> Waiting up to {}s for the clusters to be deleted...",
@@ -1821,11 +1863,8 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
             let deadline = std::time::Instant::now()
                 + std::time::Duration::from_secs(tcfg.cluster_delete_timeout);
             loop {
-                let remaining = capture_lossy(
-                    "kubectl",
-                    &kubectl_cmd(kc.as_deref(), &["get", "clusters", "-A", "-o", "name"]),
-                )
-                .await;
+                let args = kubectl_args(&target, &["get", "clusters", "-A", "-o", "name"]);
+                let remaining = capture_lossy("kubectl", &to_refs(&args)).await;
                 if remaining.trim().is_empty() {
                     println!("✓   All CAPI clusters deleted; Hardware released to the pool");
                     break;
@@ -1875,19 +1914,15 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
         println!();
     }
 
-    let kc: Option<String> = match &host {
-        ControllerHost::Kind => None,
-        ControllerHost::SelfManaged => Some(tcfg.mgmt_kubeconfig.to_string_lossy().into_owned()),
-        ControllerHost::Unreachable => None,
-    };
+    let target = resolve_target(&host, cfg, tcfg);
 
     // Steps 1-3 (k8s side): suspend Flux, delete workload clusters, wait.
     let mut clusters_gone = true;
     if !tcfg.aws_only {
-        if host != ControllerHost::Unreachable {
-            suspend_flux(kc.as_deref()).await?;
+        if let Some(target) = &target {
+            suspend_flux(target).await?;
             clusters_gone = delete_aws_workload_clusters(
-                kc.as_deref(),
+                target,
                 &env.mgmt_cluster,
                 tcfg.cluster_delete_timeout,
             )
@@ -1997,9 +2032,9 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
     }
 
     // Steps 5-8 (k8s side) on the controller host.
-    if !tcfg.aws_only && host != ControllerHost::Unreachable {
-        delete_capi_providers(kc.as_deref(), tcfg.provider_delete_timeout).await;
-        uninstall_helm_and_secrets(cfg, kc.as_deref()).await;
+    if let Some(target) = &target {
+        delete_capi_providers(target, tcfg.provider_delete_timeout).await;
+        uninstall_helm_and_secrets(cfg, target).await;
     }
 
     // Step 9: remove the controller host under the guard.
@@ -2069,6 +2104,71 @@ pub async fn detect_engine() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Write an executable shell stub that records its argv to `$STUB_LOG`.
+    /// `body` is the script body (run before the record line). Returns the path.
+    fn install_kubectl_stub(
+        dir: &std::path::Path,
+        log: &std::path::Path,
+        body: &str,
+    ) -> std::path::PathBuf {
+        let bin = dir.join("kubectl");
+        let script = format!(
+            "#!/usr/bin/env sh\n{body}\necho \"$@\" >> {log}\nexit 0\n",
+            body = body,
+            log = log.display(),
+        );
+        std::fs::write(&bin, script).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        bin
+    }
+
+    #[tokio::test]
+    async fn kind_target_binds_the_explicit_context_not_the_current_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("argv.log");
+        let bin = install_kubectl_stub(tmp.path(), &log, "true");
+        let target = K8sTarget::Kind {
+            context: "kind-mgmt".into(),
+        };
+        suspend_flux_with(&bin.to_string_lossy(), &target)
+            .await
+            .unwrap();
+        let recorded = std::fs::read_to_string(&log).unwrap();
+        assert!(
+            recorded.contains("--context kind-mgmt"),
+            "kind teardown must pass --context, got: {recorded}"
+        );
+        assert!(
+            !recorded.contains("--kubeconfig"),
+            "kind path must not use a kubeconfig"
+        );
+    }
+
+    #[tokio::test]
+    async fn self_managed_target_binds_the_kubeconfig() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("argv.log");
+        let bin = install_kubectl_stub(tmp.path(), &log, "true");
+        let kc = tmp.path().join("mgmt.yaml");
+        std::fs::write(&kc, "apiVersion: v1\n").unwrap();
+        let target = K8sTarget::SelfManaged {
+            kubeconfig: kc.to_string_lossy().into_owned(),
+        };
+        suspend_flux_with(&bin.to_string_lossy(), &target)
+            .await
+            .unwrap();
+        let recorded = std::fs::read_to_string(&log).unwrap();
+        assert!(recorded.contains(&format!("--kubeconfig {}", kc.display())));
+        assert!(
+            !recorded.contains("--context"),
+            "self-managed path must not use --context"
+        );
+    }
 
     #[test]
     fn manual_teardown_is_refused_with_text() {
