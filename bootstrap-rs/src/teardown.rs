@@ -129,6 +129,90 @@ fn to_refs(v: &[String]) -> Vec<&str> {
     v.iter().map(String::as_str).collect()
 }
 
+/// The outcome of a `kubectl get` probe, separating confirmed absence from a
+/// failed query (issue #248). The deletion guard relies on positive evidence
+/// that workloads are gone before the controller host may be removed, so a
+/// query that fails (transport, auth, forbidden, API outage) must never read
+/// as "the resource is absent".
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Probe {
+    /// Whether the resource was confirmed present, confirmed absent, or the
+    /// query failed (unknown).
+    outcome: ProbeOutcome,
+    /// The command's stdout. Valid only when `outcome` is `Present`; empty
+    /// otherwise (for an `Absent` listing it is empty by definition, and for
+    /// an `Error` it is never relied on).
+    stdout: String,
+}
+
+/// The classification of a probe outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProbeOutcome {
+    /// The query succeeded and found the resource (a non-empty listing, or a
+    /// named lookup that resolved).
+    Present,
+    /// The query succeeded and found nothing (an empty listing), or a named
+    /// lookup returned a confirmed NotFound.
+    Absent,
+    /// The query failed for any other reason. Absence is NOT established.
+    Error,
+}
+
+/// Run a `kubectl get` probe once, classify the outcome, and return the
+/// stdout so callers need not re-run the query (issue #248).
+///
+/// `single` tells the classifier whether the target is one named resource
+/// (where a `NotFound` error is a confirmed absence) or a list (where any
+/// failure is an error, never an empty listing). The command's stderr is
+/// captured (not inherited) so the failure text is available for the
+/// NotFound check without leaking into the user's terminal.
+async fn probe(kubectl: &str, args: &[String], single: bool) -> Probe {
+    let out = Command::new(kubectl)
+        .args(args)
+        .output()
+        .await
+        .map(|o| {
+            (
+                o.status.success(),
+                String::from_utf8_lossy(&o.stdout).into_owned(),
+                String::from_utf8_lossy(&o.stderr).into_owned(),
+            )
+        })
+        .unwrap_or_else(|e| (false, String::new(), e.to_string()));
+    let (ok, stdout, stderr) = out;
+    if ok {
+        return if stdout.trim().is_empty() {
+            Probe { outcome: ProbeOutcome::Absent, stdout: String::new() }
+        } else {
+            Probe { outcome: ProbeOutcome::Present, stdout }
+        };
+    }
+    // Nonzero exit. A named lookup that reports NotFound is a confirmed
+    // absence; every other failure (auth, forbidden, outage) is unknown.
+    if single {
+        let hay = format!("{stdout}\n{stderr}").to_lowercase();
+        if hay.contains("not found") || hay.contains("notfound") {
+            return Probe { outcome: ProbeOutcome::Absent, stdout: String::new() };
+        }
+    }
+    Probe { outcome: ProbeOutcome::Error, stdout: String::new() }
+}
+
+/// Parse a `kubectl get clusters -A -o name` listing into the sorted,
+/// deduplicated set of workload cluster names (the management cluster is
+/// the host and is excluded from deletion).
+fn parse_workloads(listing: &str, mgmt_cluster: &str) -> Vec<String> {
+    let mut workloads: Vec<String> = listing
+        .lines()
+        .filter_map(|l| l.trim().rsplit('/').next())
+        .filter(|n| *n != mgmt_cluster)
+        .map(String::from)
+        .collect();
+    workloads.sort();
+    workloads.dedup();
+    workloads
+}
+
 /// Discover the controller host for the aws environment. Order:
 /// kind cluster present (and reachable) wins (pre-pivot world); then the
 /// mgmt kubeconfig (post-pivot); then unreachable.
@@ -291,10 +375,21 @@ async fn delete_capi_workloads_with(
     for cluster in workloads {
         println!(">>> Deleting CAPD workload cluster '{cluster}'...");
         let args = kubectl_args(target, &["get", "cluster", cluster, "-n", "default"]);
-        let exists = run_quiet(kubectl, &to_refs(&args)).await;
-        if !exists {
-            println!("!   Cluster '{cluster}' not found – skipping");
-            continue;
+        // The probe distinguishes confirmed absence (NotFound) from a failed
+        // query (issue #248). A query error must abort, not skip: otherwise
+        // an auth or API failure masquerades as "already gone" and the
+        // controller host gets removed while the workload still exists.
+        match probe(kubectl, &args, true).await.outcome {
+            ProbeOutcome::Absent => {
+                println!("!   Cluster '{cluster}' not found – skipping");
+                continue;
+            }
+            ProbeOutcome::Present => {}
+            ProbeOutcome::Error => bail!(
+                "cannot confirm the state of CAPD workload cluster '{cluster}'; \
+                 leaving the management cluster intact (re-run once \
+                 'kubectl get cluster {cluster} -n default' works)"
+            ),
         }
         let args = kubectl_args(
             target,
@@ -313,10 +408,17 @@ async fn delete_capi_workloads_with(
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
         loop {
             let args = kubectl_args(target, &["get", "cluster", cluster, "-n", "default"]);
-            let gone = !run_quiet(kubectl, &to_refs(&args)).await;
-            if gone {
-                println!("✓   CAPD workload cluster '{cluster}' deleted");
-                break;
+            match probe(kubectl, &args, true).await.outcome {
+                ProbeOutcome::Absent => {
+                    println!("✓   CAPD workload cluster '{cluster}' deleted");
+                    break;
+                }
+                ProbeOutcome::Present => {}
+                ProbeOutcome::Error => bail!(
+                    "cannot confirm the deletion of CAPD workload cluster '{cluster}'; \
+                     leaving the management cluster intact (the cluster may still be \
+                     deleting; re-run once the query works)"
+                ),
             }
             if std::time::Instant::now() >= deadline {
                 bail!(
@@ -349,15 +451,20 @@ async fn delete_aws_workload_clusters_with(
 ) -> Result<bool> {
     println!(">>> Discovering CAPI Cluster resources...");
     let args = kubectl_args(target, &["get", "clusters", "-A", "-o", "name"]);
-    let listing = capture_lossy(kubectl, &to_refs(&args)).await;
-    let mut workloads: Vec<String> = listing
-        .lines()
-        .filter_map(|l| l.trim().rsplit('/').next())
-        .filter(|n| *n != mgmt_cluster)
-        .map(String::from)
-        .collect();
-    workloads.sort();
-    workloads.dedup();
+    // The discovery query must succeed before an empty listing may be read
+    // as "no workloads" (issue #248). A failed query (auth, forbidden,
+    // outage) is an unknown state, not confirmed absence, so it errors
+    // instead of reporting the workloads as gone.
+    let p = probe(kubectl, &args, false).await;
+    let workloads = match p.outcome {
+        ProbeOutcome::Absent => Vec::new(),
+        ProbeOutcome::Present => parse_workloads(&p.stdout, mgmt_cluster),
+        ProbeOutcome::Error => bail!(
+            "cannot list CAPI clusters to confirm workload deletion; \
+             leaving the management cluster and CAPA controller intact \
+             (re-run once 'kubectl get clusters -A' works)"
+        ),
+    };
     if workloads.is_empty() {
         println!(">>> No CAPI workload clusters found – skipping cluster deletion");
         return Ok(true);
@@ -376,13 +483,26 @@ async fn delete_aws_workload_clusters_with(
     let deadline = start + std::time::Duration::from_secs(timeout_secs);
     loop {
         let args = kubectl_args(target, &["get", "clusters", "-A", "-o", "name"]);
-        let remaining: Vec<String> = capture_lossy(kubectl, &to_refs(&args))
-            .await
-            .lines()
-            .filter_map(|l| l.trim().rsplit('/').next())
-            .filter(|n| *n != mgmt_cluster)
-            .map(String::from)
-            .collect();
+        // The poll must distinguish "clusters confirmed gone" (a successful
+        // listing with nothing but the mgmt cluster) from a failed query.
+        // An unknown state returns Ok(false) so the caller aborts and keeps
+        // the management cluster intact (issue #248).
+        let p = probe(kubectl, &args, false).await;
+        let remaining = match p.outcome {
+            ProbeOutcome::Absent => Vec::new(),
+            ProbeOutcome::Present => parse_workloads(&p.stdout, mgmt_cluster),
+            ProbeOutcome::Error => {
+                eprintln!("!   Failed to list CAPI clusters while waiting for workload deletion");
+                eprintln!("!   (auth, forbidden, or API error). The workload state is UNKNOWN.");
+                eprintln!(
+                    "!   ABORTING teardown. The management cluster and CAPA controller have been"
+                );
+                eprintln!("!   left intact so AWS resources can continue to deprovision. Re-run this");
+                eprintln!("!   once 'kubectl get clusters -A' works (or FORCE_KIND_DELETE=1 to");
+                eprintln!("!   force-delete the management cluster and accept orphaned AWS resources).");
+                return Ok(false);
+            }
+        };
         if remaining.is_empty() {
             println!("✓   All CAPI workload clusters deleted");
             return Ok(true);
@@ -1839,12 +1959,27 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
         // node keeps running Talos for the operator.
         let mut clusters_gone = true;
         let args = kubectl_args(&target, &["get", "clusters", "-A", "-o", "name"]);
-        let listing = capture_lossy("kubectl", &to_refs(&args)).await;
-        let clusters: Vec<String> = listing
-            .lines()
-            .filter_map(|l| l.trim().rsplit('/').next())
-            .map(String::from)
-            .collect();
+        // The listing must succeed before an empty result may be read as
+        // "nothing to release" (issue #248): a failed query is an unknown
+        // state, not confirmed absence, and must not release the Hardware.
+        let p = probe("kubectl", &args, false).await;
+        let clusters: Vec<String> = match p.outcome {
+            ProbeOutcome::Absent => Vec::new(),
+            ProbeOutcome::Present => p
+                .stdout
+                .lines()
+                .filter_map(|l| l.trim().rsplit('/').next())
+                .map(String::from)
+                .collect(),
+            ProbeOutcome::Error => {
+                eprintln!("!   Failed to list CAPI clusters (auth, forbidden, or API error).");
+                eprintln!("!   The cluster state is UNKNOWN; not releasing the Hardware.");
+                eprintln!("!   The management cluster was left intact; re-run teardown once");
+                eprintln!("!   'kubectl get clusters -A' works.");
+                clusters_gone = false;
+                Vec::new()
+            }
+        };
         if clusters.is_empty() {
             println!(">>> No CAPI clusters found; nothing to release");
         } else {
@@ -1864,20 +1999,35 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
                 + std::time::Duration::from_secs(tcfg.cluster_delete_timeout);
             loop {
                 let args = kubectl_args(&target, &["get", "clusters", "-A", "-o", "name"]);
-                let remaining = capture_lossy("kubectl", &to_refs(&args)).await;
-                if remaining.trim().is_empty() {
-                    println!("✓   All CAPI clusters deleted; Hardware released to the pool");
-                    break;
+                // The poll must distinguish "confirmed empty" from a failed
+                // query (issue #248). An unknown state does not release the
+                // Hardware: it leaves clusters_gone false so the host guard
+                // keeps the kind cluster and the operator can re-run.
+                match probe("kubectl", &args, false).await.outcome {
+                    ProbeOutcome::Absent => {
+                        println!("✓   All CAPI clusters deleted; Hardware released to the pool");
+                        break;
+                    }
+                    ProbeOutcome::Present => {
+                        if std::time::Instant::now() >= deadline {
+                            eprintln!("!   Timed out waiting for CAPI clusters to delete; aborting.");
+                            eprintln!("!   The management cluster was left intact; re-run teardown once");
+                            eprintln!("!   'kubectl get clusters -A' is empty.");
+                            clusters_gone = false;
+                            break;
+                        }
+                        println!(">>>   clusters still deleting...");
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    }
+                    ProbeOutcome::Error => {
+                        eprintln!("!   Failed to list CAPI clusters (auth, forbidden, or API error).");
+                        eprintln!("!   The cluster state is UNKNOWN; not releasing the Hardware.");
+                        eprintln!("!   The management cluster was left intact; re-run teardown once");
+                        eprintln!("!   'kubectl get clusters -A' works.");
+                        clusters_gone = false;
+                        break;
+                    }
                 }
-                if std::time::Instant::now() >= deadline {
-                    eprintln!("!   Timed out waiting for CAPI clusters to delete; aborting.");
-                    eprintln!("!   The management cluster was left intact; re-run teardown once");
-                    eprintln!("!   'kubectl get clusters -A' is empty.");
-                    clusters_gone = false;
-                    break;
-                }
-                println!(">>>   clusters still deleting...");
-                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             }
         }
 
@@ -2125,6 +2275,136 @@ mod tests {
             std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         bin
+    }
+
+    /// A stub whose behavior is chosen per scenario. Records argv to `$STUB_LOG`,
+    /// then runs `body` (which must end with `exit N`).
+    fn kubectl_stub(dir: &std::path::Path, log: &std::path::Path, body: &str) -> std::path::PathBuf {
+        let bin = dir.join("kubectl");
+        let script = format!(
+            "#!/usr/bin/env sh\necho \"$@\" >> {log}\n{body}\n",
+            log = log.display(),
+            body = body,
+        );
+        std::fs::write(&bin, script).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        bin
+    }
+
+    #[tokio::test]
+    async fn probe_classifies_absent_present_and_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("argv.log");
+        let args = vec!["get".to_string(), "clusters".to_string(), "-A".to_string()];
+
+        // Successful empty listing -> confirmed absence.
+        let bin = kubectl_stub(tmp.path(), &log, "exit 0");
+        assert_eq!(probe(&bin.to_string_lossy(), &args, false).await.outcome, ProbeOutcome::Absent);
+
+        // Successful non-empty listing -> present, stdout returned for the caller.
+        let bin = kubectl_stub(tmp.path(), &log, "echo name1\nexit 0");
+        let p = probe(&bin.to_string_lossy(), &args, false).await;
+        assert_eq!(p.outcome, ProbeOutcome::Present);
+        assert!(p.stdout.contains("name1"));
+
+        // A named lookup reporting NotFound -> confirmed absence (single mode).
+        let bin = kubectl_stub(
+            tmp.path(),
+            &log,
+            "echo 'Error from server (NotFound): clusters not found' 1>&2\nexit 1",
+        );
+        assert_eq!(probe(&bin.to_string_lossy(), &args, true).await.outcome, ProbeOutcome::Absent);
+
+        // A failed LIST query -> error, never absence.
+        let bin = kubectl_stub(
+            tmp.path(),
+            &log,
+            "echo 'The request could not be satisfied' 1>&2\nexit 1",
+        );
+        assert_eq!(probe(&bin.to_string_lossy(), &args, false).await.outcome, ProbeOutcome::Error);
+    }
+
+    #[tokio::test]
+    async fn failed_get_does_not_read_as_gone_for_capd_workloads() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("argv.log");
+        let bin = kubectl_stub(
+            tmp.path(),
+            &log,
+            "echo 'The request could not be satisfied' 1>&2\nexit 1",
+        );
+        let target = K8sTarget::Kind { context: "ctx".into() };
+        // A failed query must abort (Err), not be treated as "already gone".
+        let res = delete_capi_workloads_with(&bin.to_string_lossy(), &target, &["w".to_string()], 30)
+            .await;
+        assert!(res.is_err(), "a failed 'kubectl get cluster' must not skip the deletion");
+        let msg = res.unwrap_err().to_string();
+        assert!(msg.contains("cannot confirm the state of CAPD workload cluster 'w'"));
+    }
+
+    #[tokio::test]
+    async fn failed_discovery_does_not_report_aws_clusters_gone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("argv.log");
+        let bin = kubectl_stub(
+            tmp.path(),
+            &log,
+            "echo 'The request could not be satisfied' 1>&2\nexit 1",
+        );
+        let target = K8sTarget::Kind { context: "ctx".into() };
+        // The pre-fix bug: a failed listing returned Ok(true) ("all clusters gone").
+        let res =
+            delete_aws_workload_clusters_with(&bin.to_string_lossy(), &target, "mgmt", 30).await;
+        assert!(
+            res.is_err(),
+            "a failed 'kubectl get clusters -A' must not be read as 'no workload clusters'"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_poll_returns_false_during_aws_wait() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("argv.log");
+        let counts = tmp.path().join("counts");
+        // Discovery (first listing) shows the mgmt cluster + a workload so a delete
+        // is issued; every poll after that fails (transient API outage). The function
+        // must signal Ok(false) so the caller keeps the management cluster intact.
+        let body = "case \"$*\" in\n  *get*clusters*)\n     n=$(cat {c} 2>/dev/null || echo 0)\n     n=$((n+1))\n     echo $n > {c}\n     if [ $n -eq 1 ]; then\n        echo 'cluster.cluster.x-k8s.io/mgmt'\n        echo 'cluster.cluster.x-k8s.io/w1'\n        exit 0\n     fi\n     echo 'The request could not be satisfied' 1>&2\n     exit 1;;\n  *delete*)\n     exit 0;;\n  *)\n     exit 0;;\nesac";
+        let replaced = body.replace("{c}", &counts.display().to_string());
+        let bin = kubectl_stub(tmp.path(), &log, &replaced);
+        let target = K8sTarget::Kind { context: "ctx".into() };
+        let res =
+            delete_aws_workload_clusters_with(&bin.to_string_lossy(), &target, "mgmt", 600).await;
+        assert_eq!(
+            res.as_ref().ok(),
+            Some(&false),
+            "a failed poll must return Ok(false) (unknown state), not Ok(true)"
+        );
+    }
+
+    #[tokio::test]
+    async fn confirmed_gone_still_returns_true_for_aws() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("argv.log");
+        let counts = tmp.path().join("counts");
+        // Discovery (first listing) shows the mgmt cluster + a workload so a delete
+        // is issued; the following poll confirms only the mgmt cluster remains
+        // (workloads gone). This is the happy path that must keep returning Ok(true).
+        let body = "case \"$*\" in\n  *get*clusters*)\n     n=$(cat {c} 2>/dev/null || echo 0)\n     n=$((n+1))\n     echo $n > {c}\n     if [ $n -eq 1 ]; then\n        echo 'cluster.cluster.x-k8s.io/mgmt'\n        echo 'cluster.cluster.x-k8s.io/w1'\n     else\n        echo 'cluster.cluster.x-k8s.io/mgmt'\n     fi\n     exit 0;;\n  *delete*)\n     exit 0;;\n  *)\n     exit 0;;\nesac";
+        let replaced = body.replace("{c}", &counts.display().to_string());
+        let bin = kubectl_stub(tmp.path(), &log, &replaced);
+        let target = K8sTarget::Kind { context: "ctx".into() };
+        let res =
+            delete_aws_workload_clusters_with(&bin.to_string_lossy(), &target, "mgmt", 600).await;
+        assert_eq!(
+            res.as_ref().ok(),
+            Some(&true),
+            "a confirmed-empty poll must still return Ok(true)"
+        );
     }
 
     #[tokio::test]
