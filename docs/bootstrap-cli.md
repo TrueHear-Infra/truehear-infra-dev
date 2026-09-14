@@ -205,7 +205,8 @@ context) and treats a *failed* kubectl query as an unknown state, never as
 outage) therefore aborts the teardown with a nonzero exit and leaves the
 management cluster and its controllers intact, so in-flight CAPA/CABPT
 deprovisioning can continue; re-run it once the query works. A successful
-empty listing (or a named lookup reporting `NotFound`) is the only evidence
+empty listing, a named lookup reporting `NotFound`, or the API server
+reporting the resource type as not installed is the only evidence
 accepted as "confirmed gone" by the deletion guard, which is what allows the
 management cluster to be removed.
 

@@ -165,8 +165,10 @@ enum ProbeOutcome {
     /// The query succeeded and found the resource (a non-empty listing, or a
     /// named lookup that resolved).
     Present,
-    /// The query succeeded and found nothing (an empty listing), or a named
-    /// lookup returned a confirmed NotFound.
+    /// The query succeeded and found nothing (an empty listing), a named
+    /// lookup returned a confirmed NotFound, or the API server reported the
+    /// resource type itself is not installed (nothing of that kind can
+    /// exist).
     Absent,
     /// The query failed for any other reason. Absence is NOT established.
     Error,
@@ -221,16 +223,24 @@ async fn probe(kubectl: &str, args: &[String], single: bool, request_timeout: &s
             }
         };
     }
-    // Nonzero exit. A named lookup that reports NotFound is a confirmed
-    // absence; every other failure (auth, forbidden, outage) is unknown.
-    if single {
-        let hay = format!("{stdout}\n{stderr}").to_lowercase();
-        if hay.contains("not found") || hay.contains("notfound") {
-            return Probe {
-                outcome: ProbeOutcome::Absent,
-                stdout: String::new(),
-            };
-        }
+    // Nonzero exit. A named lookup that reports NotFound, or a query the
+    // API server answered with "the resource type does not exist", is a
+    // confirmed absence: a reachable server positively stating the kind is
+    // not installed means nothing of that kind can exist (CRDs removed by
+    // an earlier teardown run). Every other failure (auth, forbidden,
+    // outage) is unknown.
+    let hay = format!("{stdout}\n{stderr}").to_lowercase();
+    if hay.contains("the server doesn't have a resource type") {
+        return Probe {
+            outcome: ProbeOutcome::Absent,
+            stdout: String::new(),
+        };
+    }
+    if single && (hay.contains("not found") || hay.contains("notfound")) {
+        return Probe {
+            outcome: ProbeOutcome::Absent,
+            stdout: String::new(),
+        };
     }
     Probe {
         outcome: ProbeOutcome::Error,
@@ -2282,10 +2292,25 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
         println!("✓   AWS orphan cleanup complete");
     }
 
-    // Steps 5-8 (k8s side) on the controller host.
+    // Steps 5-8 (k8s side) on the controller host. When the sweep above
+    // removed the self-managed mgmt EKS cluster there is no reachable host
+    // left whose providers, Helm releases and secrets still need cleaning
+    // (the docs' "when the controller host is still reachable"); querying a
+    // swept host would read the in-flight deprovision as an unknown state
+    // and fail a completed teardown.
+    let mgmt_swept = aws_available
+        && host == ControllerHost::SelfManaged
+        && td.mgmt_eks_cluster_name.is_some()
+        && td.mgmt_iam_role_prefix.is_some();
     if let Some(target) = &target {
-        delete_capi_providers(target, tcfg.provider_delete_timeout).await?;
-        uninstall_helm_and_secrets(cfg, target).await;
+        if mgmt_swept {
+            println!(
+                "!   Management cluster removed by the sweep – provider and Helm cleanup skipped"
+            );
+        } else {
+            delete_capi_providers(target, tcfg.provider_delete_timeout).await?;
+            uninstall_helm_and_secrets(cfg, target).await;
+        }
     }
 
     // Step 9: remove the controller host under the guard.
@@ -2664,6 +2689,35 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("cannot list the CAPI addonproviders providers"));
+    }
+
+    #[tokio::test]
+    async fn missing_resource_type_reads_as_confirmed_absence() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("argv.log");
+        // A reachable API server stating the kind is not installed is a
+        // confirmed absence, not a failed query (the CRDs were uninstalled
+        // by an earlier teardown run).
+        let bin = kubectl_stub(
+            tmp.path(),
+            &log,
+            "echo \"error: the server doesn't have a resource type \\\"addonproviders\\\"\" 1>&2\nexit 1",
+        );
+        let args = vec![
+            "get".to_string(),
+            "addonproviders.operator.cluster.x-k8s.io".to_string(),
+            "-A".to_string(),
+        ];
+        // List form (provider listing, Flux Kustomization listing).
+        let p = probe(&bin.to_string_lossy(), &args, false, PROBE_REQUEST_TIMEOUT).await;
+        assert_eq!(
+            p.outcome,
+            ProbeOutcome::Absent,
+            "an absent resource type must read as confirmed absence, not an error"
+        );
+        // Named lookup form (a workload cluster after its CRD was removed).
+        let p = probe(&bin.to_string_lossy(), &args, true, PROBE_REQUEST_TIMEOUT).await;
+        assert_eq!(p.outcome, ProbeOutcome::Absent);
     }
 
     #[tokio::test]
