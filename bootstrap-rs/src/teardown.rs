@@ -106,10 +106,24 @@ pub enum K8sTarget {
 }
 
 impl K8sTarget {
-    /// `--context` / `--kubeconfig` argv prefix for kubectl and helm.
+    /// `--context` / `--kubeconfig` argv prefix for kubectl.
     pub fn prefix(&self) -> Vec<String> {
         match self {
             K8sTarget::Kind { context } => vec!["--context".into(), context.clone()],
+            K8sTarget::SelfManaged { kubeconfig } => {
+                vec!["--kubeconfig".into(), kubeconfig.clone()]
+            }
+        }
+    }
+
+    /// `--kube-context` / `--kubeconfig` argv prefix for helm. Helm names the
+    /// context flag `--kube-context`; the bare `--context` that kubectl
+    /// accepts is an unknown flag to helm, so the two tools must not share a
+    /// prefix builder (issue #247: the selected target must reach every
+    /// Kubernetes and Helm operation).
+    pub fn helm_prefix(&self) -> Vec<String> {
+        match self {
+            K8sTarget::Kind { context } => vec!["--kube-context".into(), context.clone()],
             K8sTarget::SelfManaged { kubeconfig } => {
                 vec!["--kubeconfig".into(), kubeconfig.clone()]
             }
@@ -158,6 +172,13 @@ enum ProbeOutcome {
     Error,
 }
 
+/// One kubectl query's bound. The poll loops check their deadlines
+/// between iterations, so a hung query (blackholed endpoint) would
+/// otherwise stall teardown forever; with this bound the query fails
+/// and classifies as `ProbeOutcome::Error` instead. 30s is the poll
+/// cadence, so a healthy query is never cut off.
+const PROBE_REQUEST_TIMEOUT: &str = "--request-timeout=30s";
+
 /// Run a `kubectl get` probe once, classify the outcome, and return the
 /// stdout so callers need not re-run the query (issue #248).
 ///
@@ -166,9 +187,16 @@ enum ProbeOutcome {
 /// failure is an error, never an empty listing). The command's stderr is
 /// captured (not inherited) so the failure text is available for the
 /// NotFound check without leaking into the user's terminal.
-async fn probe(kubectl: &str, args: &[String], single: bool) -> Probe {
+///
+/// `request_timeout` bounds a single query (e.g. `--request-timeout=30s`).
+/// The poll loops only check their deadlines between iterations, so without
+/// a bound a hung query (blackholed endpoint) would stall teardown
+/// indefinitely; with one, the query fails and classifies as `Error`.
+async fn probe(kubectl: &str, args: &[String], single: bool, request_timeout: &str) -> Probe {
+    let mut full: Vec<&str> = args.iter().map(String::as_str).collect();
+    full.push(request_timeout);
     let out = Command::new(kubectl)
-        .args(args)
+        .args(full)
         .output()
         .await
         .map(|o| {
@@ -182,9 +210,15 @@ async fn probe(kubectl: &str, args: &[String], single: bool) -> Probe {
     let (ok, stdout, stderr) = out;
     if ok {
         return if stdout.trim().is_empty() {
-            Probe { outcome: ProbeOutcome::Absent, stdout: String::new() }
+            Probe {
+                outcome: ProbeOutcome::Absent,
+                stdout: String::new(),
+            }
         } else {
-            Probe { outcome: ProbeOutcome::Present, stdout }
+            Probe {
+                outcome: ProbeOutcome::Present,
+                stdout,
+            }
         };
     }
     // Nonzero exit. A named lookup that reports NotFound is a confirmed
@@ -192,10 +226,16 @@ async fn probe(kubectl: &str, args: &[String], single: bool) -> Probe {
     if single {
         let hay = format!("{stdout}\n{stderr}").to_lowercase();
         if hay.contains("not found") || hay.contains("notfound") {
-            return Probe { outcome: ProbeOutcome::Absent, stdout: String::new() };
+            return Probe {
+                outcome: ProbeOutcome::Absent,
+                stdout: String::new(),
+            };
         }
     }
-    Probe { outcome: ProbeOutcome::Error, stdout: String::new() }
+    Probe {
+        outcome: ProbeOutcome::Error,
+        stdout: String::new(),
+    }
 }
 
 /// Parse a `kubectl get clusters -A -o name` listing into the sorted,
@@ -324,11 +364,20 @@ async fn suspend_flux_with(kubectl: &str, target: &K8sTarget) -> Result<()> {
             "name",
         ],
     );
-    let names = capture_lossy(kubectl, &to_refs(&args)).await;
-    if names.trim().is_empty() {
-        println!("!   No Flux Kustomizations found – skipping suspension");
-        return Ok(());
-    }
+    // A failed listing (auth, forbidden, outage) is an unknown state, not a
+    // confirmed empty one: suspending nothing would leave Flux reconciling
+    // mid-teardown (issue #248).
+    let p = probe(kubectl, &args, false, PROBE_REQUEST_TIMEOUT).await;
+    let names = match p.outcome {
+        ProbeOutcome::Absent => {
+            println!("!   No Flux Kustomizations found – skipping suspension");
+            return Ok(());
+        }
+        ProbeOutcome::Present => p.stdout,
+        ProbeOutcome::Error => bail!(
+ "cannot list the Flux Kustomizations to suspend them; aborting before any deletion (re-run once 'kubectl get kustomizations -n flux-system' works)"
+        ),
+    };
     let mut failed = 0;
     for ks in names.lines().filter_map(|l| l.trim().rsplit('/').next()) {
         let args = kubectl_args(
@@ -379,7 +428,10 @@ async fn delete_capi_workloads_with(
         // query (issue #248). A query error must abort, not skip: otherwise
         // an auth or API failure masquerades as "already gone" and the
         // controller host gets removed while the workload still exists.
-        match probe(kubectl, &args, true).await.outcome {
+        match probe(kubectl, &args, true, PROBE_REQUEST_TIMEOUT)
+            .await
+            .outcome
+        {
             ProbeOutcome::Absent => {
                 println!("!   Cluster '{cluster}' not found – skipping");
                 continue;
@@ -408,7 +460,10 @@ async fn delete_capi_workloads_with(
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
         loop {
             let args = kubectl_args(target, &["get", "cluster", cluster, "-n", "default"]);
-            match probe(kubectl, &args, true).await.outcome {
+            match probe(kubectl, &args, true, PROBE_REQUEST_TIMEOUT)
+                .await
+                .outcome
+            {
                 ProbeOutcome::Absent => {
                     println!("✓   CAPD workload cluster '{cluster}' deleted");
                     break;
@@ -455,7 +510,7 @@ async fn delete_aws_workload_clusters_with(
     // as "no workloads" (issue #248). A failed query (auth, forbidden,
     // outage) is an unknown state, not confirmed absence, so it errors
     // instead of reporting the workloads as gone.
-    let p = probe(kubectl, &args, false).await;
+    let p = probe(kubectl, &args, false, PROBE_REQUEST_TIMEOUT).await;
     let workloads = match p.outcome {
         ProbeOutcome::Absent => Vec::new(),
         ProbeOutcome::Present => parse_workloads(&p.stdout, mgmt_cluster),
@@ -487,7 +542,7 @@ async fn delete_aws_workload_clusters_with(
         // listing with nothing but the mgmt cluster) from a failed query.
         // An unknown state returns Ok(false) so the caller aborts and keeps
         // the management cluster intact (issue #248).
-        let p = probe(kubectl, &args, false).await;
+        let p = probe(kubectl, &args, false, PROBE_REQUEST_TIMEOUT).await;
         let remaining = match p.outcome {
             ProbeOutcome::Absent => Vec::new(),
             ProbeOutcome::Present => parse_workloads(&p.stdout, mgmt_cluster),
@@ -497,9 +552,13 @@ async fn delete_aws_workload_clusters_with(
                 eprintln!(
                     "!   ABORTING teardown. The management cluster and CAPA controller have been"
                 );
-                eprintln!("!   left intact so AWS resources can continue to deprovision. Re-run this");
+                eprintln!(
+                    "!   left intact so AWS resources can continue to deprovision. Re-run this"
+                );
                 eprintln!("!   once 'kubectl get clusters -A' works (or FORCE_KIND_DELETE=1 to");
-                eprintln!("!   force-delete the management cluster and accept orphaned AWS resources).");
+                eprintln!(
+                    "!   force-delete the management cluster and accept orphaned AWS resources)."
+                );
                 return Ok(false);
             }
         };
@@ -1560,12 +1619,19 @@ const NS_NAME_JSONPATH: &str =
     "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}";
 
 /// Step 5: delete CAPI provider CRs (the operator uninstalls the
-/// controllers), then wait up to the timeout.
-pub async fn delete_capi_providers(target: &K8sTarget, timeout_secs: u64) {
+/// controllers), then wait up to the timeout. A failed provider query is an
+/// unknown state, not "no providers" (issue #248), so the function reports
+/// the failure and the caller aborts instead of claiming the controllers are
+/// gone.
+pub async fn delete_capi_providers(target: &K8sTarget, timeout_secs: u64) -> Result<()> {
     delete_capi_providers_with("kubectl", target, timeout_secs).await
 }
 
-async fn delete_capi_providers_with(kubectl: &str, target: &K8sTarget, timeout_secs: u64) {
+async fn delete_capi_providers_with(
+    kubectl: &str,
+    target: &K8sTarget,
+    timeout_secs: u64,
+) -> Result<()> {
     println!(">>> Deleting CAPI providers...");
     let kinds = [
         "addonproviders",
@@ -1580,7 +1646,16 @@ async fn delete_capi_providers_with(kubectl: &str, target: &K8sTarget, timeout_s
         // The script's jsonpath: `ns/name` per line (-o name never
         // includes the namespace for cluster-scoped listings).
         let args = kubectl_args(target, &["get", &full, "-A", "-o", NS_NAME_JSONPATH]);
-        let listing = capture_lossy(kubectl, &to_refs(&args)).await;
+        // A failed listing must not read as "no providers of this kind"
+        // (issue #248).
+        let p = probe(kubectl, &args, false, PROBE_REQUEST_TIMEOUT).await;
+        let listing = match p.outcome {
+            ProbeOutcome::Absent => String::new(),
+            ProbeOutcome::Present => p.stdout,
+            ProbeOutcome::Error => bail!(
+                "cannot list the CAPI {kind} providers to confirm their state; aborting (re-run once 'kubectl get {full} -A' works)"
+            ),
+        };
         for object in listing.lines().filter_map(|l| {
             let l = l.trim();
             if l.is_empty() {
@@ -1604,7 +1679,7 @@ async fn delete_capi_providers_with(kubectl: &str, target: &K8sTarget, timeout_s
     }
     if !deleted_any {
         println!("!   CAPI Operator CRDs not present – skipping provider deletion");
-        return;
+        return Ok(());
     }
     println!(">>> Waiting up to {timeout_secs}s for CAPI providers to be removed...");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
@@ -1613,32 +1688,45 @@ async fn delete_capi_providers_with(kubectl: &str, target: &K8sTarget, timeout_s
         for kind in kinds {
             let full = format!("{kind}.operator.cluster.x-k8s.io");
             let args = kubectl_args(target, &["get", &full, "-A", "--no-headers"]);
-            let listing = capture_lossy(kubectl, &to_refs(&args)).await;
-            remaining += listing.lines().filter(|l| !l.trim().is_empty()).count();
+            // A failed poll must not count as zero providers remaining
+            // (issue #248).
+            let p = probe(kubectl, &args, false, PROBE_REQUEST_TIMEOUT).await;
+            match p.outcome {
+                ProbeOutcome::Absent => {}
+                ProbeOutcome::Present => {
+                    remaining += p.stdout.lines().filter(|l| !l.trim().is_empty()).count()
+                }
+                ProbeOutcome::Error => bail!(
+                    "cannot confirm the removal of the CAPI providers; aborting (re-run once 'kubectl get {full} -A' works)"
+                ),
+            }
         }
         if remaining == 0 {
             println!("✓   All CAPI providers removed");
-            return;
+            return Ok(());
         }
         if std::time::Instant::now() >= deadline {
             warn("Timed out waiting for CAPI providers to be removed – continuing anyway");
-            return;
+            return Ok(());
         }
         println!(">>>   {remaining} provider(s) still removing...");
         tokio::time::sleep(std::time::Duration::from_secs(15)).await;
     }
 }
 
-/// Steps 6-8: helm releases then secrets (aws path, target threaded).
-pub async fn uninstall_helm_and_secrets(cfg: &Config, target: &K8sTarget) {
-    for release in ["flux", "flux-operator"] {
+/// Steps 6-7: uninstall the bootstrap Helm releases (flux, then
+/// flux-operator). Factored out of `uninstall_helm_and_secrets` so the target
+/// binding (helm's `--kube-context` for kind, `--kubeconfig` for self-managed)
+/// is testable with a stub helm (issue #247).
+async fn uninstall_helm_with(helm: &str, releases: &[&str], namespace: &str, target: &K8sTarget) {
+    for release in releases {
         println!(">>> Uninstalling {release} Helm release...");
-        let prefix = target.prefix();
+        let prefix = target.helm_prefix();
         let kc: Vec<&str> = to_refs(&prefix);
         let status = {
             let mut args = kc.clone();
-            args.extend_from_slice(&["status", release, "-n", "flux-system"]);
-            capture_lossy("helm", &args).await
+            args.extend_from_slice(&["status", release, "-n", namespace]);
+            capture_lossy(helm, &args).await
         };
         if status.trim().is_empty() || status.contains("not found") || status.contains("Error") {
             println!("!   {release} Helm release not found – skipping");
@@ -1649,17 +1737,22 @@ pub async fn uninstall_helm_and_secrets(cfg: &Config, target: &K8sTarget) {
             "uninstall",
             release,
             "--namespace",
-            "flux-system",
+            namespace,
             "--wait",
             "--timeout",
             "5m0s",
         ]);
-        if run("helm", &args).await.is_ok() {
+        if run(helm, &args).await.is_ok() {
             println!("✓   {release} Helm release uninstalled");
         } else {
             warn(&format!("{release} Helm release could not be uninstalled"));
         }
     }
+}
+
+/// Steps 6-8: helm releases then secrets (aws path, target threaded).
+pub async fn uninstall_helm_and_secrets(cfg: &Config, target: &K8sTarget) {
+    uninstall_helm_with("helm", &["flux", "flux-operator"], "flux-system", target).await;
 
     println!(">>> Deleting GitHub PAT and SOPS age secrets...");
     let ns = &cfg.repo.bootstrap.flux_namespace;
@@ -1957,12 +2050,12 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
         // deletion is the release). CAPT deprovisions the machine's CAPI
         // footprint; the Hardware CR stays in the Tinkerbell stack and the
         // node keeps running Talos for the operator.
-        let mut clusters_gone = true;
+        let clusters_gone = true;
         let args = kubectl_args(&target, &["get", "clusters", "-A", "-o", "name"]);
         // The listing must succeed before an empty result may be read as
         // "nothing to release" (issue #248): a failed query is an unknown
         // state, not confirmed absence, and must not release the Hardware.
-        let p = probe("kubectl", &args, false).await;
+        let p = probe("kubectl", &args, false, PROBE_REQUEST_TIMEOUT).await;
         let clusters: Vec<String> = match p.outcome {
             ProbeOutcome::Absent => Vec::new(),
             ProbeOutcome::Present => p
@@ -1972,12 +2065,12 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
                 .map(String::from)
                 .collect(),
             ProbeOutcome::Error => {
-                eprintln!("!   Failed to list CAPI clusters (auth, forbidden, or API error).");
-                eprintln!("!   The cluster state is UNKNOWN; not releasing the Hardware.");
-                eprintln!("!   The management cluster was left intact; re-run teardown once");
-                eprintln!("!   'kubectl get clusters -A' works.");
-                clusters_gone = false;
-                Vec::new()
+                // Unknown state: abort with a nonzero exit (issue #248), the
+                // way the aws path does, instead of falling through to
+                // "nothing to release" and a clean "Teardown complete.".
+                bail!(
+ "cannot confirm the state of the CAPI clusters on the local-talos host; the Hardware is not released and the management cluster was left intact (re-run once 'kubectl get clusters -A' works)"
+                );
             }
         };
         if clusters.is_empty() {
@@ -2003,29 +2096,33 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
                 // query (issue #248). An unknown state does not release the
                 // Hardware: it leaves clusters_gone false so the host guard
                 // keeps the kind cluster and the operator can re-run.
-                match probe("kubectl", &args, false).await.outcome {
+                match probe("kubectl", &args, false, PROBE_REQUEST_TIMEOUT)
+                    .await
+                    .outcome
+                {
                     ProbeOutcome::Absent => {
                         println!("✓   All CAPI clusters deleted; Hardware released to the pool");
                         break;
                     }
                     ProbeOutcome::Present => {
                         if std::time::Instant::now() >= deadline {
-                            eprintln!("!   Timed out waiting for CAPI clusters to delete; aborting.");
-                            eprintln!("!   The management cluster was left intact; re-run teardown once");
-                            eprintln!("!   'kubectl get clusters -A' is empty.");
-                            clusters_gone = false;
-                            break;
+                            // Deletion was not confirmed: a nonzero exit tells
+                            // automation the Hardware is still reserved
+                            // (issue #248).
+                            bail!(
+ "timed out waiting for the CAPI clusters to delete; the Hardware is not released and the management cluster was left intact (re-run once 'kubectl get clusters -A' is empty)"
+                            );
                         }
                         println!(">>>   clusters still deleting...");
                         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
                     }
                     ProbeOutcome::Error => {
-                        eprintln!("!   Failed to list CAPI clusters (auth, forbidden, or API error).");
-                        eprintln!("!   The cluster state is UNKNOWN; not releasing the Hardware.");
-                        eprintln!("!   The management cluster was left intact; re-run teardown once");
-                        eprintln!("!   'kubectl get clusters -A' works.");
-                        clusters_gone = false;
-                        break;
+                        // Unknown state: abort with a nonzero exit (issue #248)
+                        // instead of leaving clusters_gone false and printing
+                        // a clean "Teardown complete."
+                        bail!(
+ "cannot confirm the deletion of the CAPI clusters on the local-talos host; the Hardware is not released and the management cluster was left intact (re-run once 'kubectl get clusters -A' works)"
+                        );
                     }
                 }
             }
@@ -2088,7 +2185,11 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
         }
     }
 
-    // Step 4: AWS orphan sweep (workloads, then the mgmt itself).
+    // Step 4: AWS orphan sweep (workloads, then the mgmt itself). The unknown
+    // workload state that #248 guards against already aborts above (bail!)
+    // before this point, so by the time the sweep runs the k8s side is either
+    // confirmed done or was never present (unreachable controller, the
+    // documented AWS-only recovery path).
     if aws_available {
         println!(">>> Cleaning up orphaned AWS resources...");
         let mut targets: Vec<AwsSweepTarget> = td
@@ -2183,7 +2284,7 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
 
     // Steps 5-8 (k8s side) on the controller host.
     if let Some(target) = &target {
-        delete_capi_providers(target, tcfg.provider_delete_timeout).await;
+        delete_capi_providers(target, tcfg.provider_delete_timeout).await?;
         uninstall_helm_and_secrets(cfg, target).await;
     }
 
@@ -2279,7 +2380,11 @@ mod tests {
 
     /// A stub whose behavior is chosen per scenario. Records argv to `$STUB_LOG`,
     /// then runs `body` (which must end with `exit N`).
-    fn kubectl_stub(dir: &std::path::Path, log: &std::path::Path, body: &str) -> std::path::PathBuf {
+    fn kubectl_stub(
+        dir: &std::path::Path,
+        log: &std::path::Path,
+        body: &str,
+    ) -> std::path::PathBuf {
         let bin = dir.join("kubectl");
         let script = format!(
             "#!/usr/bin/env sh\necho \"$@\" >> {log}\n{body}\n",
@@ -2303,11 +2408,16 @@ mod tests {
 
         // Successful empty listing -> confirmed absence.
         let bin = kubectl_stub(tmp.path(), &log, "exit 0");
-        assert_eq!(probe(&bin.to_string_lossy(), &args, false).await.outcome, ProbeOutcome::Absent);
+        assert_eq!(
+            probe(&bin.to_string_lossy(), &args, false, PROBE_REQUEST_TIMEOUT)
+                .await
+                .outcome,
+            ProbeOutcome::Absent
+        );
 
         // Successful non-empty listing -> present, stdout returned for the caller.
         let bin = kubectl_stub(tmp.path(), &log, "echo name1\nexit 0");
-        let p = probe(&bin.to_string_lossy(), &args, false).await;
+        let p = probe(&bin.to_string_lossy(), &args, false, PROBE_REQUEST_TIMEOUT).await;
         assert_eq!(p.outcome, ProbeOutcome::Present);
         assert!(p.stdout.contains("name1"));
 
@@ -2317,7 +2427,12 @@ mod tests {
             &log,
             "echo 'Error from server (NotFound): clusters not found' 1>&2\nexit 1",
         );
-        assert_eq!(probe(&bin.to_string_lossy(), &args, true).await.outcome, ProbeOutcome::Absent);
+        assert_eq!(
+            probe(&bin.to_string_lossy(), &args, true, PROBE_REQUEST_TIMEOUT)
+                .await
+                .outcome,
+            ProbeOutcome::Absent
+        );
 
         // A failed LIST query -> error, never absence.
         let bin = kubectl_stub(
@@ -2325,7 +2440,12 @@ mod tests {
             &log,
             "echo 'The request could not be satisfied' 1>&2\nexit 1",
         );
-        assert_eq!(probe(&bin.to_string_lossy(), &args, false).await.outcome, ProbeOutcome::Error);
+        assert_eq!(
+            probe(&bin.to_string_lossy(), &args, false, PROBE_REQUEST_TIMEOUT)
+                .await
+                .outcome,
+            ProbeOutcome::Error
+        );
     }
 
     #[tokio::test]
@@ -2337,11 +2457,17 @@ mod tests {
             &log,
             "echo 'The request could not be satisfied' 1>&2\nexit 1",
         );
-        let target = K8sTarget::Kind { context: "ctx".into() };
+        let target = K8sTarget::Kind {
+            context: "ctx".into(),
+        };
         // A failed query must abort (Err), not be treated as "already gone".
-        let res = delete_capi_workloads_with(&bin.to_string_lossy(), &target, &["w".to_string()], 30)
-            .await;
-        assert!(res.is_err(), "a failed 'kubectl get cluster' must not skip the deletion");
+        let res =
+            delete_capi_workloads_with(&bin.to_string_lossy(), &target, &["w".to_string()], 30)
+                .await;
+        assert!(
+            res.is_err(),
+            "a failed 'kubectl get cluster' must not skip the deletion"
+        );
         let msg = res.unwrap_err().to_string();
         assert!(msg.contains("cannot confirm the state of CAPD workload cluster 'w'"));
     }
@@ -2355,7 +2481,9 @@ mod tests {
             &log,
             "echo 'The request could not be satisfied' 1>&2\nexit 1",
         );
-        let target = K8sTarget::Kind { context: "ctx".into() };
+        let target = K8sTarget::Kind {
+            context: "ctx".into(),
+        };
         // The pre-fix bug: a failed listing returned Ok(true) ("all clusters gone").
         let res =
             delete_aws_workload_clusters_with(&bin.to_string_lossy(), &target, "mgmt", 30).await;
@@ -2376,7 +2504,9 @@ mod tests {
         let body = "case \"$*\" in\n  *get*clusters*)\n     n=$(cat {c} 2>/dev/null || echo 0)\n     n=$((n+1))\n     echo $n > {c}\n     if [ $n -eq 1 ]; then\n        echo 'cluster.cluster.x-k8s.io/mgmt'\n        echo 'cluster.cluster.x-k8s.io/w1'\n        exit 0\n     fi\n     echo 'The request could not be satisfied' 1>&2\n     exit 1;;\n  *delete*)\n     exit 0;;\n  *)\n     exit 0;;\nesac";
         let replaced = body.replace("{c}", &counts.display().to_string());
         let bin = kubectl_stub(tmp.path(), &log, &replaced);
-        let target = K8sTarget::Kind { context: "ctx".into() };
+        let target = K8sTarget::Kind {
+            context: "ctx".into(),
+        };
         let res =
             delete_aws_workload_clusters_with(&bin.to_string_lossy(), &target, "mgmt", 600).await;
         assert_eq!(
@@ -2397,7 +2527,9 @@ mod tests {
         let body = "case \"$*\" in\n  *get*clusters*)\n     n=$(cat {c} 2>/dev/null || echo 0)\n     n=$((n+1))\n     echo $n > {c}\n     if [ $n -eq 1 ]; then\n        echo 'cluster.cluster.x-k8s.io/mgmt'\n        echo 'cluster.cluster.x-k8s.io/w1'\n     else\n        echo 'cluster.cluster.x-k8s.io/mgmt'\n     fi\n     exit 0;;\n  *delete*)\n     exit 0;;\n  *)\n     exit 0;;\nesac";
         let replaced = body.replace("{c}", &counts.display().to_string());
         let bin = kubectl_stub(tmp.path(), &log, &replaced);
-        let target = K8sTarget::Kind { context: "ctx".into() };
+        let target = K8sTarget::Kind {
+            context: "ctx".into(),
+        };
         let res =
             delete_aws_workload_clusters_with(&bin.to_string_lossy(), &target, "mgmt", 600).await;
         assert_eq!(
@@ -2447,6 +2579,104 @@ mod tests {
         assert!(
             !recorded.contains("--context"),
             "self-managed path must not use --context"
+        );
+    }
+
+    #[tokio::test]
+    async fn helm_targets_kind_with_kube_context_not_bare_context() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("argv.log");
+        // A stub helm that records its argv and reports a live release, so the
+        // uninstall path (not just the status probe) is exercised.
+        let helm = tmp.path().join("helm");
+        let script = format!(
+            "#!/usr/bin/env sh\necho \"$@\" >> {log}\necho 'NAME: flux\nSTATUS: deployed'\nexit 0\n",
+            log = log.display(),
+        );
+        std::fs::write(&helm, script).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&helm, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let target = K8sTarget::Kind {
+            context: "ctx".into(),
+        };
+        uninstall_helm_with(&helm.to_string_lossy(), &["flux"], "flux-system", &target).await;
+        let recorded = std::fs::read_to_string(&log).unwrap();
+        assert!(
+            recorded.contains("--kube-context ctx"),
+            "helm must receive --kube-context, got: {recorded}"
+        );
+        assert!(
+            !recorded.split_whitespace().any(|t| t == "--context"),
+            "helm must not receive the bare kubectl --context flag, got: {recorded}"
+        );
+        assert!(
+            recorded.contains("uninstall flux"),
+            "the status probe must find the release so the uninstall runs, got: {recorded}"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_flux_listing_aborts_suspension() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("argv.log");
+        let bin = kubectl_stub(
+            tmp.path(),
+            &log,
+            "echo 'The request could not be satisfied' 1>&2\nexit 1",
+        );
+        let target = K8sTarget::Kind {
+            context: "ctx".into(),
+        };
+        // A failed listing must abort, not read as "no Kustomizations".
+        let res = suspend_flux_with(&bin.to_string_lossy(), &target).await;
+        assert!(
+            res.is_err(),
+            "a failed 'kubectl get kustomizations' must not skip suspension"
+        );
+        assert!(res
+            .unwrap_err()
+            .to_string()
+            .contains("cannot list the Flux Kustomizations"));
+    }
+
+    #[tokio::test]
+    async fn failed_provider_listing_aborts_provider_deletion() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("argv.log");
+        let bin = kubectl_stub(
+            tmp.path(),
+            &log,
+            "echo 'The request could not be satisfied' 1>&2\nexit 1",
+        );
+        let target = K8sTarget::Kind {
+            context: "ctx".into(),
+        };
+        // A failed provider listing must abort, not read as "no providers".
+        let res = delete_capi_providers_with(&bin.to_string_lossy(), &target, 30).await;
+        assert!(
+            res.is_err(),
+            "a failed provider listing must not be read as 'no providers'"
+        );
+        assert!(res
+            .unwrap_err()
+            .to_string()
+            .contains("cannot list the CAPI addonproviders providers"));
+    }
+
+    #[tokio::test]
+    async fn probe_passes_the_request_timeout_to_kubectl() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("argv.log");
+        let bin = kubectl_stub(tmp.path(), &log, "exit 0");
+        let args = vec!["get".to_string(), "clusters".to_string(), "-A".to_string()];
+        probe(&bin.to_string_lossy(), &args, false, PROBE_REQUEST_TIMEOUT).await;
+        let recorded = std::fs::read_to_string(&log).unwrap();
+        assert!(
+            recorded.contains("--request-timeout=30s"),
+            "probes must bound the query with --request-timeout, got: {recorded}"
         );
     }
 
