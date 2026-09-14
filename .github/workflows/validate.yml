@@ -22,6 +22,8 @@ jobs:
 
       - name: Verify airgap ownership invariant
         run: python3 airgap/tests/test-airgap-ownership.py
+      - name: Verify digest token boundary (reject overlong)
+        run: python3 airgap/tests/test-digest-regex.py
 
   kustomize-build:
     name: Build kustomize overlays
