@@ -64,7 +64,7 @@ def main() -> int:
         return 1
 
     charts = config.get("charts", {})
-    for required_env in ("local-host", "aws", "local-talos", "azure"):
+    for required_env in ("local-host", "aws", "local-talos", "azure", "gcp"):
         if required_env not in config.get("environments", {}):
             failures.append(f"environments.{required_env} section missing from bootstrap.toml")
     for chart, manifests in CHART_MANIFESTS.items():
