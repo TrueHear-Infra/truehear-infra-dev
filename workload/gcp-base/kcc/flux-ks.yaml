@@ -1,0 +1,32 @@
+---
+# ══════════════════════════════════════════════════════════════════════════════
+# Flux Kustomization: the workload-cluster Config Connector operator and the
+# cluster-mode ConfigConnector (GKE Workload Identity, no secret).
+#
+# wait: true so the resource Kustomizations below (networking, storage,
+# postgres, iam) only apply once the operator StatefulSet is Ready; the
+# ConfigConnector CR itself has no standard ready condition, so its actuation
+# is observed through the resources it creates. timeout: 15m for the
+# operator install.
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kcc
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 2m
+  timeout: 15m
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./workload/gcp-base/kcc
+  dependsOn:
+    - name: cert-manager
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars

@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - cert-manager/flux-ks.yaml
+  - kcc/flux-ks.yaml
+  - networking/flux-ks.yaml
+  - storage/flux-ks.yaml
+  - postgres/flux-ks.yaml
+  - iam/flux-ks.yaml
