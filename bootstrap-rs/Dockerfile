@@ -43,7 +43,7 @@ ARG TARGETARCH
 ARG PODMAN_VERSION=6.1.1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates curl git jq findutils gnupg python3 \
+        ca-certificates curl git jq findutils gnupg python-is-python3 \
     && install -d -m 0755 /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg \
          -o /etc/apt/keyrings/docker.asc \
@@ -53,7 +53,6 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -sfn /usr/bin/python3 /usr/bin/python \
     && case "${TARGETARCH}" in \
          amd64) MISE_ASSET=mise-v${MISE_VERSION}-linux-x64 ;; \
          arm64) MISE_ASSET=mise-v${MISE_VERSION}-linux-arm64 ;; \
@@ -86,18 +85,22 @@ RUN chmod +x /usr/local/bin/toolbox-entrypoint.sh
 # and the azure layer (azure-cli, for the arc-federate hook and
 # azure-bootstrap) install too; credentials arrive at runtime. azure-cli
 # is a pipx backend tool and needs the pinned python present to install.
-# The python3 apt package is only the `python` symlink the gcloud
-# installer's provisioning probe needs before the mise python shims exist
-# (bookworm ships no bare `python`). The gcloud tarball bundles the
-# gke-gcloud-auth-plugin; if the mise plugin ever loses the component,
-# `gcloud components install gke-gcloud-auth-plugin --quiet` (image only,
-# never a Git manifest).
+# The gcp layer (gcloud, for the wif-federate hook and gcp-bootstrap)
+# installs after the python layer: on arm64 the tarball ships no bundled
+# python, so the installer's provisioning probe needs a bare `python`
+# (the apt python-is-python3 above plus the pinned python 3.14.7 here).
+# gke-gcloud-auth-plugin is not in the SDK tarball, so it is added as a
+# Cloud SDK component before the shim is generated. `mise x` is avoided here:
+# it auto-installs every tool in the env (including the dev-only zarf) and a
+# zarf auto-install failure would abort the build. `mise which gcloud`
+# resolves the path without any install.
 RUN cd /opt/krops \
     && mise install -y kind helm kubectl clusterctl flux2 sops age \
     && mise -E aws install -y aws-cli clusterawsadm \
     && mise install -y python@3.14.7 uv@0.12.13 \
     && mise -E azure install -y azure-cli \
     && mise -E gcp install -y gcloud \
+    && "$(mise -E gcp which gcloud)" components install gke-gcloud-auth-plugin --quiet \
     && mise reshim
 
 WORKDIR /workspace
