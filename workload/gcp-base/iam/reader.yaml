@@ -1,0 +1,56 @@
+---
+# ══════════════════════════════════════════════════════════════════════════════
+# Per-cluster read-only identity (issue #72, the AWS IAM reader-role and
+# workload/base/iam-roles/ counterparts). A service account per cluster with
+# storage.objectViewer on this cluster's bucket and cloudsql.viewer on the
+# project, plus the token-creator grant on itself that lets a human
+# impersonate it (gcloud auth application-default login
+# --impersonate-service-account krops-reader@<project>.iam.gserviceaccount.com)
+# and read the bucket / database through its identity.
+#
+# dependsOn: storage so the bucket the viewer grant references exists first.
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: iam.cnrm.cloud.google.com/v1
+kind: IAMServiceAccount
+metadata:
+  name: krops-reader
+  namespace: default
+spec:
+  accountId: "krops-${CLUSTER_NAME}-reader"
+  displayName: "krops reader (${CLUSTER_NAME})"
+---
+apiVersion: iam.cnrm.cloud.google.com/v1
+kind: IAMPolicyMember
+metadata:
+  name: krops-reader-bucket-viewer
+  namespace: default
+spec:
+  role: "roles/storage.objectViewer"
+  member: "serviceAccount:krops-${CLUSTER_NAME}-reader@${GCP_PROJECT}.iam.gserviceaccount.com"
+  resourceRef:
+    kind: StorageBucket
+    name: data
+---
+apiVersion: iam.cnrm.cloud.google.com/v1
+kind: IAMPolicyMember
+metadata:
+  name: krops-reader-sql-viewer
+  namespace: default
+spec:
+  role: "roles/cloudsql.viewer"
+  member: "serviceAccount:krops-${CLUSTER_NAME}-reader@${GCP_PROJECT}.iam.gserviceaccount.com"
+  resourceRef:
+    external: "projects/${GCP_PROJECT}"
+---
+# The human's impersonation path: token creator on the reader's own account.
+apiVersion: iam.cnrm.cloud.google.com/v1
+kind: IAMPolicyMember
+metadata:
+  name: krops-reader-token-creator
+  namespace: default
+spec:
+  role: "roles/iam.serviceAccountTokenCreator"
+  member: "serviceAccount:krops-reader@${GCP_PROJECT}.iam.gserviceaccount.com"
+  resourceRef:
+    kind: IAMServiceAccount
+    name: krops-reader
