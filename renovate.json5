@@ -234,6 +234,16 @@
       "datasourceTemplate": "pypi",
       "autoReplaceStringTemplate": "\"pipx:azure-cli\" = \"{{newValue}}\""
     },
+    {
+      "customType": "regex",
+      "description": "mise: gcloud pin (gcp environment layer, issue #72); the gcr.io google-cloud-cli image tags mirror the SDK releases",
+      "managerFilePatterns": ["/(^|/)mise\\.gcp\\.toml$/"],
+      "matchStrings": ["gcloud = \"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "gcr.io/google.com/cloudsdktool/google-cloud-cli",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "semver",
+      "autoReplaceStringTemplate": "gcloud = \"{{newValue}}\""
+    },
     // ── bootstrap.toml chart pins (annotation-driven) ─────────────────────
     // Datasource and depName live in `# renovate:` comments next to the
     // chart pins in bootstrap.toml (consumed by the Rust binary since the
@@ -305,7 +315,7 @@
       "customType": "regex",
       "description": "CAPI core, kubeadm, and CAPD provider versions (aws, local-host, local-talos)",
       "managerFilePatterns": [
-        "/(^|/)mgmt/(aws|azure|local-host|local-talos)/capi-providers/(capi-system|capd-system)/.+\\.ya?ml$/"
+        "/(^|/)mgmt/(aws|azure|gcp|local-host|local-talos)/capi-providers/(capi-system|capd-system)/.+\\.ya?ml$/"
       ],
       "matchStrings": ["\\s{2}version: \"v(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "kubernetes-sigs/cluster-api",
@@ -339,9 +349,36 @@
     },
     {
       "customType": "regex",
+      "description": "CAPG (GCP infrastructure) provider version (issue #72)",
+      "managerFilePatterns": [
+        "/(^|/)mgmt/gcp/capi-providers/capg-system/.+\\.ya?ml$/"
+      ],
+      "matchStrings": ["\\s{2}version: \"v(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "kubernetes-sigs/cluster-api-provider-gcp",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)",
+      "autoReplaceStringTemplate": "  version: \"v{{newValue}}\""
+    },
+    {
+      "customType": "regex",
+      "description": "Config Connector operator version (management and workload copies must stay identical; the pinned-manifest gate, tests/test-kcc-operator-pin.py, keeps them in lockstep - Renovate bumps the version comment and image tag, the gate then goes red until the whole release bundle is re-downloaded, issue #72)",
+      "managerFilePatterns": [
+        "/(^|/)mgmt/gcp/infrastructure/kcc-operator/configconnector-operator\\.yaml$/",
+        "/(^|/)workload/gcp-base/kcc/configconnector-operator\\.yaml$/"
+      ],
+      "matchStrings": [
+        "kcc-operator-version: (?<currentValue>[0-9.]+)",
+        "image: gcr.io/gke-release/cnrm/operator:(?<currentValue>[0-9.]+)"
+      ],
+      "depNameTemplate": "GoogleCloudPlatform/k8s-config-connector",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)"
+    },
+    {
+      "customType": "regex",
       "description": "CAAPH (helm add-on) provider version",
       "managerFilePatterns": [
-        "/(^|/)mgmt/(aws|azure|local-host)/capi-providers/caaph-system/.+\\.ya?ml$/"
+        "/(^|/)mgmt/(aws|azure|gcp|local-host)/capi-providers/caaph-system/.+\\.ya?ml$/"
       ],
       "matchStrings": ["\\s{2}version: \"v(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "kubernetes-sigs/cluster-api-addon-provider-helm",
@@ -677,7 +714,8 @@
         "kubernetes-sigs/cluster-api",
         "kubernetes-sigs/cluster-api-provider-aws",
         "kubernetes-sigs/cluster-api-addon-provider-helm",
-        "kubernetes-sigs/cluster-api-provider-azure"
+        "kubernetes-sigs/cluster-api-provider-azure",
+        "kubernetes-sigs/cluster-api-provider-gcp"
       ],
       "groupName": "cluster-api"
     },
