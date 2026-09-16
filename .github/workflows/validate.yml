@@ -24,6 +24,8 @@ jobs:
         run: python3 airgap/tests/test-airgap-ownership.py
       - name: Verify digest token boundary (reject overlong)
         run: python3 airgap/tests/test-digest-regex.py
+      - name: Verify branch-dispatch signature identity wiring (#328)
+        run: python3 airgap/tests/test-airgap-verify-identity.py
 
   kustomize-build:
     name: Build kustomize overlays
