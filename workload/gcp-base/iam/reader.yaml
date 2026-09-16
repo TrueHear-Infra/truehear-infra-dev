@@ -3,10 +3,10 @@
 # Per-cluster read-only identity (issue #72, the AWS IAM reader-role and
 # workload/base/iam-roles/ counterparts). A service account per cluster with
 # storage.objectViewer on this cluster's bucket and cloudsql.viewer on the
-# project, plus the token-creator grant on itself that lets a human
-# impersonate it (gcloud auth application-default login
-# --impersonate-service-account krops-reader@<project>.iam.gserviceaccount.com)
-# and read the bucket / database through its identity.
+# project, plus a token-creator grant ON this per-cluster account whose
+# member is the project-level human `krops-reader` GSA: the human identity
+# can impersonate the per-cluster reader and read the bucket / database
+# through it (least privilege per cluster, like the AWS reader role).
 #
 # dependsOn: storage so the bucket the viewer grant references exists first.
 # ══════════════════════════════════════════════════════════════════════════════

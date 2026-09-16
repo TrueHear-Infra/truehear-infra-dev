@@ -31,3 +31,50 @@ RDS controller runs with `aws.region: ${AWS_REGION}`:
 > instance lands in the region's **default VPC**, not the EKS VPC. CAPA
 > creates the EKS VPC dynamically, so its subnet IDs cannot be declared in
 > Git ahead of time.
+
+## GCP resources (GKE workload cluster)
+
+On the GKE workload cluster, Config Connector (KCC, PR 2) creates the
+counterparts from `workload/gcp-base/`; the management cluster's KCC is
+the authoring identity (see [GCP environment](./gcp.md) for how it
+authenticates).
+
+### Storage bucket
+
+`workload/gcp-base/storage/bucket.yaml` creates one bucket per cluster
+(`krops-<project-number>-<cluster>-data`) with the same posture as the S3
+bucket: uniform bucket-level access on (no object ACLs), versioning on,
+no public access.
+
+### Cloud SQL (private IP, IAM auth only)
+
+`workload/gcp-base/postgres/postgres.yaml` creates one PostgreSQL 17
+instance per cluster (`krops-<cluster>-db`), zonal, with:
+
+- private IP only (`ipv4Enabled: false`, no public address), the private IP
+  reaching the workload VPC through the Private Service Access range and
+  VPC peering in `workload/gcp-base/networking/`
+- `requireSsl: true` + `sslMode: ENCRYPTED_ONLY`
+- IAM authentication only (`cloudsql.iam_authentication: on`): the reader
+  user is the per-cluster reader service account, so no password exists
+  anywhere (the AWS `manageMasterUserPassword` / Azure flexible-server
+  counterparts use a stored password; the GCP path does not)
+
+Connection:
+
+```sh
+gcloud auth application-default login --impersonate-service-account krops-reader@<project-id>.iam.gserviceaccount.com
+gcloud sql connect krops-europe-north1-workload-db --db=app --zone=europe-north1-a
+```
+
+### Per-cluster reader identity
+
+`workload/gcp-base/iam/reader.yaml` creates the per-cluster reader service
+account (`krops-<cluster>-reader`) with `storage.objectViewer` on the
+bucket and `cloudsql.viewer` on the project, plus a
+`roles/iam.serviceAccountTokenCreator` grant ON the per-cluster account
+whose member is the project-level `krops-reader` GSA: the human identity
+can impersonate the per-cluster reader (least privilege per cluster, like
+the AWS reader role). `tests/test-gcp-identity-chain.py` (in `mise run
+validate` and CI) cross-checks the identity couplings between these and
+`mgmt/gcp/`.

@@ -43,7 +43,7 @@ ARG TARGETARCH
 ARG PODMAN_VERSION=6.1.1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates curl git jq findutils gnupg \
+        ca-certificates curl git jq findutils gnupg python3 \
     && install -d -m 0755 /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg \
          -o /etc/apt/keyrings/docker.asc \
@@ -53,6 +53,7 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/* \
+    && ln -sfn /usr/bin/python3 /usr/bin/python \
     && case "${TARGETARCH}" in \
          amd64) MISE_ASSET=mise-v${MISE_VERSION}-linux-x64 ;; \
          arm64) MISE_ASSET=mise-v${MISE_VERSION}-linux-arm64 ;; \
@@ -75,7 +76,7 @@ ENV MISE_DATA_DIR=/usr/local/share/mise \
 
 COPY --from=build /usr/local/bin/krops-bootstrap /usr/local/bin/krops-bootstrap
 COPY bootstrap-rs/toolbox-entrypoint.sh /usr/local/bin/toolbox-entrypoint.sh
-COPY mise.toml mise.aws.toml mise.azure.toml /opt/krops/
+COPY mise.toml mise.aws.toml mise.azure.toml mise.gcp.toml /opt/krops/
 
 RUN chmod +x /usr/local/bin/toolbox-entrypoint.sh
 
@@ -85,11 +86,18 @@ RUN chmod +x /usr/local/bin/toolbox-entrypoint.sh
 # and the azure layer (azure-cli, for the arc-federate hook and
 # azure-bootstrap) install too; credentials arrive at runtime. azure-cli
 # is a pipx backend tool and needs the pinned python present to install.
+# The python3 apt package is only the `python` symlink the gcloud
+# installer's provisioning probe needs before the mise python shims exist
+# (bookworm ships no bare `python`). The gcloud tarball bundles the
+# gke-gcloud-auth-plugin; if the mise plugin ever loses the component,
+# `gcloud components install gke-gcloud-auth-plugin --quiet` (image only,
+# never a Git manifest).
 RUN cd /opt/krops \
     && mise install -y kind helm kubectl clusterctl flux2 sops age \
     && mise -E aws install -y aws-cli clusterawsadm \
     && mise install -y python@3.14.7 uv@0.12.13 \
     && mise -E azure install -y azure-cli \
+    && mise -E gcp install -y gcloud \
     && mise reshim
 
 WORKDIR /workspace

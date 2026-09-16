@@ -396,14 +396,13 @@ flowchart TD
 
     subgraph wl["Workload cluster europe-north1-workload (GKE)"]
         WF["Flux (sync: workload/europe-north1-01)"]
-        WCM["cert-manager Ks"]
         WKCC["kcc Ks<br/>KCC 1.156.0 + cluster-mode ConfigConnector<br/>GKE Workload Identity via krops-kcc"]
         WNET["networking Ks<br/>PSA range + peering (dependsOn: kcc)"]
         WSTOR["storage Ks<br/>bucket (dependsOn: kcc)"]
         WPSQL["postgres Ks<br/>Cloud SQL (dependsOn: kcc, networking)"]
         WIAM["iam Ks<br/>per-cluster reader GSA (dependsOn: kcc, storage)"]
 
-        WF --> WCM --> WKCC --> WNET
+        WF --> WKCC --> WNET
         WKCC --> WSTOR
         WKCC --> WPSQL
         WKCC --> WIAM
@@ -428,7 +427,7 @@ europe-north1 clusters (dependsOn: capg-system, gcp-vars)
 ### Reconciliation order (GCP workload cluster)
 
 ```
-cert-manager ▶ kcc (operator + ConfigConnector)
+kcc (operator + ConfigConnector; the pinned bundle ships its own webhook certs)
                                      ├▶ networking (PSA range + peering)
                                      ├▶ storage (bucket)
                                      ├▶ postgres (Cloud SQL, dependsOn: networking)
