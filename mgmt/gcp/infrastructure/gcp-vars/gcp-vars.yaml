@@ -1,0 +1,20 @@
+---
+# ══════════════════════════════════════════════════════════════════════════════
+# Non-secret GCP identifiers substituted into management-side manifests
+# (Flux postBuild.substituteFrom), the azure-vars counterpart. Lives in
+# flux-system because a Kustomization can only substitute from ConfigMaps in
+# its own namespace. Values come from `mise -E gcp run gcp-bootstrap`.
+# GCP_WIF_PROVIDER is NOT set here: it defaults to `mgmt` in the manifests
+# (${GCP_WIF_PROVIDER:=mgmt}); the kind bootstrap cluster overrides it to
+# `kind` through the gcp-wif ConfigMap the wif-federate task creates.
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gcp-vars
+  namespace: flux-system
+data:
+  GCP_PROJECT: "krops-placeholder"
+  GCP_PROJECT_NUMBER: "000000000000"
+  GCP_REGION: "europe-north1"
+  GCP_ZONE: "europe-north1-a"
