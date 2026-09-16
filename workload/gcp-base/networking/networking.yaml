@@ -1,0 +1,41 @@
+---
+# ══════════════════════════════════════════════════════════════════════════════
+# Private Service Access for Cloud SQL (issue #72, the AWS NAT/egress and
+# Azure delegated-subnet counterparts).
+#
+# ComputeGlobalAddress reserves a 16 prefix in the global IP space for the
+# PSA range, and ServiceNetworkingConnection peers it into the workload VPC
+# (the VPC CAPG creates, named in cluster-vars). Cloud SQL's private IP is
+# then allocated from that range (postgres/).
+#
+# dependsOn: kcc so the KCC CRDs are Ready before these CRs land. The
+# KCC-managed resources have no standard ready condition; postgres depends
+# on this Kustomization's completion, not on its actuation.
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: compute.cnrm.cloud.google.com/v1beta1
+kind: ComputeGlobalAddress
+metadata:
+  name: psa
+  namespace: default
+spec:
+  name: krops-${CLUSTER_NAME}-psa
+  purpose: VPC_PEERING
+  addressType: INTERNAL
+  prefixLength: 16
+  networkRef:
+    external: "projects/${GCP_PROJECT}/global/networks/${GCP_NETWORK}"
+---
+apiVersion: servicenetworking.cnrm.cloud.google.com/v1beta1
+kind: ServiceNetworkingConnection
+metadata:
+  name: psa
+  namespace: default
+spec:
+  networkRef:
+    external: "projects/${GCP_PROJECT}/global/networks/${GCP_NETWORK}"
+  reservedPeeringRanges:
+    - name: krops-${CLUSTER_NAME}-psa
+      resourceRef:
+        kind: ComputeGlobalAddress
+        name: psa
+  service: "servicenetworking.googleapis.com"
