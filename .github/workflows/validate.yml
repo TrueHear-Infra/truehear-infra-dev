@@ -100,6 +100,9 @@ jobs:
           uv sync --locked
           uv run python tests/test-azure-identity-chain.py
 
+      - name: KCC operator pin cross-check
+        run: python3 tests/test-kcc-operator-pin.py
+
   yaml-lint:
     name: Lint YAML
     runs-on: ubuntu-latest

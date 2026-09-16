@@ -64,6 +64,11 @@ if ! uv run python tests/test-azure-identity-chain.py; then
   echo "    FAILED: azure identity chain" >&2
   fail=1
 fi
+echo "==> kcc operator pin"
+if ! python3 tests/test-kcc-operator-pin.py; then
+  echo "    FAILED: kcc operator pin" >&2
+  fail=1
+fi
 for dir in $(find mgmt workload -name kustomization.yaml -exec dirname {} \; | sort -u); do
   echo "==> kustomize build $dir"
   if ! kubectl kustomize "$dir" >/dev/null; then

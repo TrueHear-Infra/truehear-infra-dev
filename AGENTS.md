@@ -64,6 +64,25 @@ resources. There is no app source code here, only declarative infrastructure.
   `azure-vars` (flux-system) and in the workload `cluster-vars`. Upgrade CAPZ
   one minor at a time (ASO CRD migrations). Teardown is manual until the live
   acceptance run.
+- `mgmt/gcp/`: the GCP management variant (issue #72). Same component
+  layout as `mgmt/aws/` (`infrastructure/`, `capi-providers/`, `addons/`,
+  `clusters/`), synced from GitHub. CAPG v1.13.1
+  (`capi-providers/capg-system/`) provisions GKE clusters
+  (`GCPManaged*`); the Config Connector operator ships as a pinned verbatim
+  release bundle (`infrastructure/kcc-operator/`, version comment
+  `kcc-operator-version:`) and `tests/test-kcc-operator-pin.py` (in
+  `mise run validate` and CI) keeps every committed copy byte-identical and
+  matching the version comment: Renovate bumps the comment and the operator
+  image tag, and the gate then goes red until the whole release bundle is
+  re-downloaded (same "Renovate opens, human completes" posture as the
+  Talos images). Credentials: none at rest; Workload Identity Federation
+  through the `krops` pool with plain `external_account` Secrets
+  (`capg-wif-credentials`, `kcc-wif-credentials`), provider
+  `${GCP_WIF_PROVIDER:=mgmt}` (kind bootstrap overrides to `kind` via the
+  `gcp-wif` ConfigMap the `wif-federate` post-kind-create task creates; the
+  pivot pins `mgmt` via `pivot-manifest-vars`). Non-secret IDs live in
+  `gcp-vars` (flux-system) and the workload `cluster-vars`. Teardown is
+  manual until the live acceptance run.
 - `workload/`: synced by each WORKLOAD cluster's Flux.
   - `base/`: ACK controllers and S3/RDS/IAM custom resources.
   - `azure-base/`: cert-manager, ASO (workload identity), and the Azure
@@ -72,6 +91,12 @@ resources. There is no app source code here, only declarative infrastructure.
     `tests/test-azure-identity-chain.py` (in `mise run validate` and CI)
     cross-checks the ConfigMap/subject couplings between these and
     `mgmt/azure/infrastructure/aso-workload-identity/`.
+  - `gcp-base/` (PR 2, issue #72): cert-manager, Config Connector (the same
+    pinned operator bundle as the management side) and the GCP resources
+    (PSA range + peering, storage bucket, Cloud SQL with IAM-only auth,
+    per-cluster reader GSA). `europe-north1-01/` points at it;
+    `tests/test-gcp-identity-chain.py` cross-checks the WIF
+    pool/provider/subject couplings against `mgmt/gcp/`.
   - `<region>-01/`: per-cluster overlays pointing at `../base`.
 - `airgap/`: Zarf offline transfer bundle for the local-host profile.
   `zarf.yaml` is the authoritative image listing for the package and
@@ -103,11 +128,14 @@ resources. There is no app source code here, only declarative infrastructure.
   rerun-safe-by-default semantics. Chart versions it installs imperatively
   are Renovate-annotated constants in `src/main.rs`. CI (bootstrap-rs
   workflow) runs fmt/clippy/build/test; the toolchain is pinned in
-  `rust-toolchain.toml`. Four config-driven knobs added for azure:
+  `rust-toolchain.toml`. Five config-driven knobs added for azure and gcp:
   `pivot-sops-secrets` (SOPS manifests applied in the pivot target before
   the move), `teardown.manual` (refuse with operator text),
   `post-kind-create-task` (mise task run after kind creation) and
-  `pivot-manifests` (plain manifests applied in the target before the move).
+  `pivot-manifests` (plain manifests applied in the target before the move),
+  plus `pivot-manifest-vars` (key/value overrides merged onto the
+  flux-system ConfigMap data before `pivot-manifests` substitution; also
+  supports `${VAR:=default}` placeholders in those manifests, issue #72).
 - `bootstrap.sh` / `pivot.sh` / `teardown.sh`: the shell equivalents of the
   CLI's phases. Kept until the binary completes full parity runs per
   environment, then retired (issues #92/#95/#100). The lifecycle mise tasks
@@ -117,7 +145,10 @@ resources. There is no app source code here, only declarative infrastructure.
 - `docs/`: detailed documentation (see the table in README.md).
 - `mise.toml`: pinned tool versions and all task entrypoints.
   `mise.aws.toml` is the AWS tool layer (aws-cli, clusterawsadm),
-  activated with `MISE_ENV=aws`.
+  activated with `MISE_ENV=aws`. `mise.azure.toml` (azure-cli) and
+  `mise.gcp.toml` (gcloud, plus the `gcp-bootstrap`, `wif-federate` and
+  `kubeconfigs` tasks; gcloud state lives in the gitignored `.gcloud/`
+  shared with the toolbox) are the other per-environment layers.
 - `renovate.json5`: Renovate config. Dependency versions live in the native
   files that consume them (mise configs, manifests, workflows, airgap
   inventory); Renovate discovers and updates them weekly and tracks pending
@@ -244,6 +275,7 @@ Load these only when the task touches their domain:
 - `docs/architecture.md`: reconciliation order, how workload apps are delivered.
 - `docs/bootstrap-cli.md`: the `krops-bootstrap` Rust CLI: interface, env knobs, pivot, parity status.
 - `docs/azure.md`: the Azure environment: subscription prep, credentials, AKS clusters, ASO on workload clusters, upgrade rules.
+- `docs/gcp.md`: the GCP environment: project prep, WIF credentials (no keys), GKE clusters, Config Connector on the workload cluster, upgrade rules.
 - `docs/extending.md`: adding a workload cluster, adding apps, adding other providers (Azure, Talos, k0smotron).
 - `docs/secrets.md`: SOPS + age setup, credential rotation.
 - `docs/konflate.md`: rendered PR review, CI gate, tokens, write-back.

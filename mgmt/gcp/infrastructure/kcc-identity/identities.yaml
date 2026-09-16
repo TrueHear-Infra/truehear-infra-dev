@@ -1,0 +1,290 @@
+---
+# ══════════════════════════════════════════════════════════════════════════════
+# The krops Google service accounts, created once by gcp-bootstrap and adopted
+# by Config Connector (issue #72). Display names must match gcp-bootstrap's
+# `sa()` calls exactly (KCC adoption is immutable on displayName).
+#
+#   krops-capg   CAPG + management-side Config Connector (the krops-capz
+#                precedent: one GSA for both, split later if a least-privilege
+#                review demands it).
+#   krops-kcc    the workload-cluster Config Connector (GKE-native WI, bound
+#                per-cluster in europe-north1-workload.yaml).
+#   krops-reader the human read-only identity; humans impersonate it.
+#
+# Project-level role grants mirror the gcp-bootstrap grant() loop, so KCC
+# adopts the imperatively created bindings.
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMServiceAccount
+metadata:
+  name: krops-capg
+  namespace: default
+spec:
+  displayName: krops CAPG + management-side Config Connector
+  projectRef:
+    external: projects/${GCP_PROJECT}
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMServiceAccount
+metadata:
+  name: krops-kcc
+  namespace: default
+spec:
+  displayName: krops workload-cluster Config Connector
+  projectRef:
+    external: projects/${GCP_PROJECT}
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMServiceAccount
+metadata:
+  name: krops-reader
+  namespace: default
+spec:
+  displayName: krops human read-only identity
+  projectRef:
+    external: projects/${GCP_PROJECT}
+---
+# ── krops-capg project-level grants ──────────────────────────────────────────
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-capg-container-admin
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/container.admin
+  memberFrom:
+    serviceAccountRef:
+      name: krops-capg
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-capg-compute-network-admin
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/compute.networkAdmin
+  memberFrom:
+    serviceAccountRef:
+      name: krops-capg
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-capg-iam-sa-user
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/iam.serviceAccountUser
+  memberFrom:
+    serviceAccountRef:
+      name: krops-capg
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-capg-iam-sa-token-creator
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/iam.serviceAccountTokenCreator
+  memberFrom:
+    serviceAccountRef:
+      name: krops-capg
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-capg-iam-sa-admin
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/iam.serviceAccountAdmin
+  memberFrom:
+    serviceAccountRef:
+      name: krops-capg
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-capg-iam-wif-pool-admin
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/iam.workloadIdentityPoolAdmin
+  memberFrom:
+    serviceAccountRef:
+      name: krops-capg
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-capg-project-iam-admin
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/resourcemanager.projectIamAdmin
+  memberFrom:
+    serviceAccountRef:
+      name: krops-capg
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-capg-serviceusage-admin
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/serviceusage.serviceUsageAdmin
+  memberFrom:
+    serviceAccountRef:
+      name: krops-capg
+---
+# ── krops-capg Workload Identity impersonation (one per cluster subject) ──────
+# The WIF principals are the `google.subject` values asserted by the pool
+# providers (kind via wif-federate, mgmt via Git); the subject is the
+# system:serviceaccount:<ns>:<sa> of the K8s service account doing the
+# exchange. test-gcp-identity-chain.py cross-checks these against the
+# attributeCondition subjects.
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-capg-wif-capg-manager
+  namespace: default
+spec:
+  resourceRef:
+    apiVersion: iam.cnrm.cloud.google.com/v1beta1
+    kind: IAMServiceAccount
+    name: krops-capg
+  role: roles/iam.workloadIdentityUser
+  member: principal://iam.googleapis.com/projects/${GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/krops/subject/system:serviceaccount:capg-system:capg-manager
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-capg-wif-cnrm-controller
+  namespace: default
+spec:
+  resourceRef:
+    apiVersion: iam.cnrm.cloud.google.com/v1beta1
+    kind: IAMServiceAccount
+    name: krops-capg
+  role: roles/iam.workloadIdentityUser
+  member: principal://iam.googleapis.com/projects/${GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/krops/subject/system:serviceaccount:cnrm-system:cnrm-controller-manager
+---
+# ── krops-kcc project-level grants (workload-cluster KCC) ────────────────────
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-kcc-cloudsql-admin
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/cloudsql.admin
+  memberFrom:
+    serviceAccountRef:
+      name: krops-kcc
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-kcc-storage-admin
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/storage.admin
+  memberFrom:
+    serviceAccountRef:
+      name: krops-kcc
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-kcc-compute-network-admin
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/compute.networkAdmin
+  memberFrom:
+    serviceAccountRef:
+      name: krops-kcc
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-kcc-servicenetworking-admin
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/servicenetworking.networksAdmin
+  memberFrom:
+    serviceAccountRef:
+      name: krops-kcc
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-kcc-iam-sa-admin
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/iam.serviceAccountAdmin
+  memberFrom:
+    serviceAccountRef:
+      name: krops-kcc
+---
+# ── krops-reader project-level grants (human read-only) ──────────────────────
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-reader-cloudsql-viewer
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/cloudsql.viewer
+  memberFrom:
+    serviceAccountRef:
+      name: krops-reader
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: krops-reader-storage-object-viewer
+  namespace: default
+spec:
+  resourceRef:
+    kind: Project
+    external: projects/${GCP_PROJECT}
+  role: roles/storage.objectViewer
+  memberFrom:
+    serviceAccountRef:
+      name: krops-reader

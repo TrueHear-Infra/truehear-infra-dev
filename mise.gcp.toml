@@ -1,0 +1,129 @@
+# gcp environment task layer (issue #72).
+#
+# Like aws and azure, this environment syncs mgmt/gcp from GitHub and pivots
+# into a GKE management cluster built by CAPG. gcloud is needed for the
+# one-time project preparation (gcp-bootstrap), for the wif-federate hook
+# bootstrap-rs runs right after kind creation (post-kind-create-task), and
+# for debugging.
+
+[env]
+KROPS_PROFILE = "gcp"
+# Persist gcloud state next to the repo (gitignored) so the toolbox and the
+# host share one login, like .kube/.
+CLOUDSDK_CONFIG = "{{config_root}}/.gcloud"
+
+[tools]
+gcloud = "585.0.0"
+
+[tasks.gcp-bootstrap]
+description = "One-time project prep: enable APIs, create the krops-capg / krops-kcc / krops-reader service accounts with their role grants and the krops workload identity pool; prints the values to commit. No key is created (issue #72)."
+run = '''
+set -eu
+: "${GCP_PROJECT:?set GCP_PROJECT in .env or the shell}"
+gcloud config set project "$GCP_PROJECT" --quiet
+PROJECT_NUMBER=$(gcloud projects describe "$GCP_PROJECT" --format='value(projectNumber)')
+echo "==> enable APIs"
+gcloud services enable container.googleapis.com compute.googleapis.com \
+  iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com \
+  cloudresourcemanager.googleapis.com sqladmin.googleapis.com \
+  servicenetworking.googleapis.com storage.googleapis.com
+sa() { # <name> <display>
+  gcloud iam service-accounts describe "$1@$GCP_PROJECT.iam.gserviceaccount.com" >/dev/null 2>&1 \
+    || gcloud iam service-accounts create "$1" --display-name "$2"
+}
+grant() { # <sa> <role>
+  gcloud projects add-iam-policy-binding "$GCP_PROJECT" --quiet --condition=None \
+    --member "serviceAccount:$1@$GCP_PROJECT.iam.gserviceaccount.com" --role "$2" >/dev/null
+}
+echo "==> service accounts (adopted from Git by KCC afterwards)"
+sa krops-capg   "krops CAPG + management-side Config Connector"
+sa krops-kcc    "krops workload-cluster Config Connector"
+sa krops-reader "krops human read-only identity"
+for r in roles/container.admin roles/compute.networkAdmin roles/iam.serviceAccountUser \
+         roles/iam.serviceAccountTokenCreator roles/iam.serviceAccountAdmin \
+         roles/iam.workloadIdentityPoolAdmin roles/resourcemanager.projectIamAdmin \
+         roles/serviceusage.serviceUsageAdmin; do grant krops-capg "$r"; done
+for r in roles/cloudsql.admin roles/storage.admin roles/compute.networkAdmin \
+         roles/servicenetworking.networksAdmin roles/iam.serviceAccountAdmin; do grant krops-kcc "$r"; done
+for r in roles/cloudsql.viewer roles/storage.objectViewer; do grant krops-reader "$r"; done
+echo "==> workload identity pool krops (providers: wif-federate adds kind, Git declares mgmt)"
+gcloud iam workload-identity-pools describe krops --location=global >/dev/null 2>&1 \
+  || gcloud iam workload-identity-pools create krops --location=global --display-name krops
+cat <<EOF
+
+Commit these (non-secret) values:
+  mgmt/gcp/infrastructure/gcp-vars/gcp-vars.yaml
+    GCP_PROJECT:        "${GCP_PROJECT}"
+    GCP_PROJECT_NUMBER: "${PROJECT_NUMBER}"
+  mgmt/gcp/addons/flux-apps/flux-instance.yaml (cluster-vars)
+    GCP_PROJECT / GCP_PROJECT_NUMBER: the same values
+Nothing is secret: no service-account key exists (issue #72).
+EOF
+'''
+
+# Idempotent: provider create-or-update, binding add is a no-op when present,
+# the ConfigMap is applied. A recreated kind cluster (new signing key) is
+# healed by the JWKS re-upload on the next run.
+[tasks.wif-federate]
+description = "Federate the kind bootstrap cluster (issue #72): upload its OIDC JWKS as the `kind` provider of the krops pool, grant krops-capg impersonation to the CAPG and KCC service accounts, and set GCP_WIF_PROVIDER=kind for Flux. Idempotent; run by bootstrap-rs (post-kind-create-task)."
+run = '''
+set -eu
+: "${GCP_PROJECT:?set GCP_PROJECT in .env or the shell}"
+KIND_CONTEXT="${KIND_CONTEXT:-kind-mgmt}"
+kubectl config use-context "$KIND_CONTEXT"
+gcloud config set project "$GCP_PROJECT" --quiet
+if ! gcloud auth print-access-token >/dev/null 2>&1; then
+  echo "==> no gcloud session; starting browser-less login"
+  gcloud auth login --no-launch-browser --quiet
+fi
+PROJECT_NUMBER=$(gcloud projects describe "$GCP_PROJECT" --format='value(projectNumber)')
+ISSUER=$(kubectl get --raw /.well-known/openid-configuration | sed -n 's/.*"issuer":"\([^"]*\)".*/\1/p')
+: "${ISSUER:?could not read the kind issuer}"
+JWKS=$(mktemp); trap 'rm -f "$JWKS"' EXIT
+kubectl get --raw /openid/v1/jwks > "$JWKS"
+COND='assertion.sub in ["system:serviceaccount:capg-system:capg-manager", "system:serviceaccount:cnrm-system:cnrm-controller-manager"]'
+echo "==> provider kind (issuer $ISSUER, JWKS uploaded: kind is not internet-reachable)"
+if gcloud iam workload-identity-pools providers describe kind --location=global --workload-identity-pool=krops >/dev/null 2>&1; then
+  gcloud iam workload-identity-pools providers update-oidc kind --location=global --workload-identity-pool=krops \
+    --issuer-uri="$ISSUER" --allowed-audiences="$ISSUER" --jwk-json-path="$JWKS" \
+    --attribute-mapping="google.subject=assertion.sub" --attribute-condition="$COND" --quiet
+else
+  gcloud iam workload-identity-pools providers create-oidc kind --location=global --workload-identity-pool=krops \
+    --issuer-uri="$ISSUER" --allowed-audiences="$ISSUER" --jwk-json-path="$JWKS" \
+    --attribute-mapping="google.subject=assertion.sub" --attribute-condition="$COND" --quiet
+fi
+echo "==> krops-capg impersonation for the CAPG and KCC service accounts (Git repeats these)"
+for sub in system:serviceaccount:capg-system:capg-manager system:serviceaccount:cnrm-system:cnrm-controller-manager; do
+  gcloud iam service-accounts add-iam-policy-binding "krops-capg@$GCP_PROJECT.iam.gserviceaccount.com" --quiet \
+    --role roles/iam.workloadIdentityUser \
+    --member "principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/krops/subject/$sub" >/dev/null
+done
+echo "==> GCP_WIF_PROVIDER=kind for Flux substitution (flux-system/gcp-wif)"
+kubectl create namespace flux-system --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n flux-system create configmap gcp-wif --from-literal=GCP_WIF_PROVIDER=kind \
+  --dry-run=client -o yaml | kubectl apply -f -
+'''
+
+[tasks.kubeconfigs]
+description = "Export the GKE workload-cluster user kubeconfig (clusterctl 1.14 has no --user flag, so read the <cluster>-user-kubeconfig Secret CAPG writes; falls back to the control-plane kubeconfig)"
+run = '''
+KUBECONFIG_FILE="${KUBECONFIG_FILE:-$HOME/.kube/krops-workloads.yaml}"
+fail=0
+for region in $(find mgmt/gcp/clusters -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort); do
+  cluster="${region}-workload"
+  echo "==> ${cluster}"
+  for secret in "${cluster}-user-kubeconfig" "${cluster}-kubeconfig"; do
+    b64=$(kubectl -n default get secret "$secret" -o jsonpath='{.data.kubeconfig}' 2>/dev/null)
+    [ -n "$b64" ] && break
+  done
+  if [ -z "$b64" ]; then
+    echo "    FAILED: ${cluster} (no kubeconfig secret; cluster not provisioned yet?)" >&2
+    fail=1
+    continue
+  fi
+  echo "$b64" | base64 -d > "${KUBECONFIG_FILE}.${cluster}"
+  chmod 600 "${KUBECONFIG_FILE}.${cluster}"
+done
+echo "Use with: KUBECONFIG=${KUBECONFIG_FILE}.<cluster> kubectl get nodes"
+exit $fail
+'''

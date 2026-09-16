@@ -27,7 +27,7 @@ Env:
   TOOLBOX_IMAGE   image reference (default: ${TOOLBOX_IMAGE};
                   build locally with: docker build -f bootstrap-rs/Dockerfile \\
                     -t krops-toolbox:dev . && TOOLBOX_IMAGE=krops-toolbox:dev)
-  KROPS_PROFILE aws | local-host | local-talos
+  KROPS_PROFILE aws | azure | gcp | local-host | local-talos
                   (default: the mise environment in use)
 EOF
   exit 2
@@ -128,6 +128,9 @@ PASS_ENV=(
   -e AZURE_SUBSCRIPTION_ID
   -e AZURE_LOCATION
   -e AZURE_CONFIG_DIR
+  -e GCP_PROJECT
+  -e GCP_REGION
+  -e CLOUDSDK_CONFIG
 )
 
 # Repo-local persistent kubeconfig state (gitignored): the toolbox's internal
@@ -157,5 +160,12 @@ exec "$CONTAINER_ENGINE" run --rm ${TTY_ARGS[@]+"${TTY_ARGS[@]}"} \
   -v "$REPO_ROOT/.kube:/root/.kube" \
   -e KUBECONFIG="$KUBECONFIG_IN" \
   "${PASS_ENV[@]}" \
+  # CLOUDSDK_CONFIG is canonical-by-design: it is always the repo-local
+  # .gcloud/ (inside the /workspace mount above), shared with the host mise
+  # gcp env, not an operator value. The duplicate -e after PASS_ENV is
+  # intentional; the container engine takes the last value, so an operator-set
+  # CLOUDSDK_CONFIG (forwarded in PASS_ENV) is overridden here. Keep the two
+  # in sync if the mount path ever changes.
+  -e CLOUDSDK_CONFIG=/workspace/.gcloud \
   "$TOOLBOX_IMAGE" \
   ${CLI_ARGS[@]+"${CLI_ARGS[@]}"}

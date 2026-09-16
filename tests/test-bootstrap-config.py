@@ -23,12 +23,14 @@ CHART_MANIFESTS = {
         "mgmt/aws/addons/flux-apps/flux-operator.yaml",
         "mgmt/local-host/addons/flux-apps/flux-operator.yaml",
         "mgmt/azure/addons/flux-apps/flux-operator.yaml",
+        "mgmt/gcp/addons/flux-apps/flux-operator.yaml",
     ],
     "cert-manager": [
         "mgmt/aws/infrastructure/cert-manager/helmrelease.yaml",
         "mgmt/local-host/infrastructure/cert-manager/helmrelease.yaml",
         "mgmt/local-talos/infrastructure/cert-manager/helmrelease.yaml",
         "mgmt/azure/infrastructure/cert-manager/helmrelease.yaml",
+        "mgmt/gcp/infrastructure/cert-manager/helmrelease.yaml",
         "workload/azure-base/cert-manager/helmrelease.yaml",
     ],
     "capi-operator": [
@@ -36,6 +38,7 @@ CHART_MANIFESTS = {
         "mgmt/local-host/infrastructure/capi-operator/helmrelease.yaml",
         "mgmt/local-talos/infrastructure/capi-operator/helmrelease.yaml",
         "mgmt/azure/infrastructure/capi-operator/helmrelease.yaml",
+        "mgmt/gcp/infrastructure/capi-operator/helmrelease.yaml",
     ],
 }
 
@@ -61,7 +64,7 @@ def main() -> int:
         return 1
 
     charts = config.get("charts", {})
-    for required_env in ("local-host", "aws", "local-talos", "azure"):
+    for required_env in ("local-host", "aws", "local-talos", "azure", "gcp"):
         if required_env not in config.get("environments", {}):
             failures.append(f"environments.{required_env} section missing from bootstrap.toml")
     for chart, manifests in CHART_MANIFESTS.items():
@@ -120,6 +123,27 @@ def main() -> int:
                 failures.append(f"environments.{name} pivot-manifest missing: {manifest}")
             elif manifest.endswith(".sops.yaml"):
                 failures.append(f"environments.{name} pivot-manifest must be plain, not *.sops.yaml: {manifest}")
+        # Substitution overrides applied on top of the flux-system ConfigMap
+        # data before pivot-manifest substitution (issue #72): the key must be
+        # UPPER_SNAKE and must actually appear as a ${KEY} placeholder in one
+        # of the environment's pivot-manifests (an override for a placeholder
+        # that no pivot manifest carries is dead config).
+        pivot_vars = env.get("pivot-manifest-vars", {})
+        for key in pivot_vars:
+            if not re.match(r"^[A-Z][A-Z0-9_]*$", key):
+                failures.append(f"environments.{name} pivot-manifest-vars key {key!r} is not UPPER_SNAKE")
+        if pivot_vars:
+            pivot_manifest_text = "\n".join(
+                (REPO_ROOT / manifest).read_text()
+                for manifest in env.get("pivot-manifests", [])
+                if (REPO_ROOT / manifest).is_file()
+            )
+            for key in pivot_vars:
+                if "${" + key not in pivot_manifest_text:
+                    failures.append(
+                        f"environments.{name} pivot-manifest-vars key {key!r} "
+                        f"is not used as ${{{key}}} in any pivot-manifest"
+                    )
         hook = env.get("post-kind-create-task")
         if hook:
             mise_toml = REPO_ROOT / f"mise.{name}.toml"

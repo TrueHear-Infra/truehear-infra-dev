@@ -40,8 +40,8 @@ operator CRs (`operator.cluster.x-k8s.io/v1alpha2`) under
 AWS EKS, `mgmt/local-host/capi-providers/` for local Docker, and
 `mgmt/local-talos/capi-providers/` for Talos and Tinkerbell), one directory per
 provider namespace, and registered in that environment's `capi-providers/flux-ks.yaml`.
-The operator resolves the well-known provider names (`aws`, `azure`, `talos`,
-`k0sproject-k0smotron`) from the same built-in registry `clusterctl` uses, so
+The operator resolves the well-known provider names (`aws`, `azure`, `gcp`,
+`talos`, `k0sproject-k0smotron`) from the same built-in registry `clusterctl` uses, so
 a provider is just a typed CR with a pinned version:
 
 ```
@@ -92,6 +92,32 @@ clusters use `AzureASOManagedCluster` / `AzureASOManagedControlPlane` /
 `AzureASOManagedMachinePool` with the ASO resources inline (their names are
 literal final names: kustomize's `namePrefix` does not descend into
 `spec.resources`).
+
+### GCP (CAPG + Config Connector)
+
+CAPG v1.13.1 speaks the v1beta1 contract (accepted by CAPI v1.14 until the
+v1beta1 removal). The worked example is the `gcp` environment: `mgmt/gcp/`
+(see [gcp.md](./gcp.md)), `europe-north1` with a GKE management cluster
+(`europe-north1-management`) and a GKE workload cluster. Reuse it rather
+than adding CAPG to another environment:
+
+- The provider is `capi-providers/capg-system/providers.yaml`
+  (`InfrastructureProvider gcp` v1.13.1 with `configSecret: capg-variables`;
+  GKE and MachinePool are feature gates in the variables, not in the CR).
+- Credentials are one plain `external_account` Secret per consumer
+  (`capg-wif-credentials` for CAPG, `kcc-wif-credentials` for Config
+  Connector): Workload Identity Federation against the `krops` pool, the
+  provider name templated as `${GCP_WIF_PROVIDER:=mgmt}` (the kind bootstrap
+  cluster overrides it to `kind` through the `gcp-wif` ConfigMap the
+  `wif-federate` task creates, and the pivot pins `mgmt` through
+  `pivot-manifest-vars`). No service-account key exists anywhere.
+- Cloud resources on the workload cluster are reconciled by a second Config
+  Connector (pinned release bundle, `workload/gcp-base/kcc/`) running under
+  GKE-native Workload Identity, not by a CAPI add-on.
+- Clusters use `GCPManagedCluster` / `GCPManagedControlPlane` /
+  `GCPManagedMachinePool` with the literal GKE `clusterName` kept as-is
+  (kustomize's `namePrefix` does not rename it; the CAPI cross-references
+  get the prefix through `capi-nameref.yaml`).
 
 ### Talos (CABPT + CACPPT)
 

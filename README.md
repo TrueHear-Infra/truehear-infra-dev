@@ -215,6 +215,17 @@ mise -E azure run azure-bootstrap
 mise -E azure run bootstrap
 ```
 
+The `gcp` environment builds a GKE management cluster with CAPG and
+manages GCP resources with Config Connector on the workload cluster, using
+Workload Identity Federation instead of keys; see
+[docs/gcp.md](docs/gcp.md):
+
+```sh
+mise -E gcp install              # adds gcloud
+mise -E gcp run gcp-bootstrap
+mise -E gcp run bootstrap
+```
+
 ## The bootstrap CLI
 
 The single `krops-bootstrap` binary implements bootstrap, the default pivot, and
@@ -245,6 +256,7 @@ teardown controls, toolbox release, and current parity status.
 | [docs/operations.md](docs/operations.md) | Toolbox runtime, prerequisites, quotas, bootstrap, pivot recovery, teardown, validation |
 | [docs/extending.md](docs/extending.md) | Adding a workload cluster, adding apps to the workload clusters, adding other providers (Azure, Talos, k0smotron) |
 | [docs/azure.md](docs/azure.md) | Azure environment: subscription prep, credentials, AKS clusters, ASO on workload clusters, upgrades |
+| [docs/gcp.md](docs/gcp.md) | GCP environment: project prep, WIF credentials (no keys), GKE clusters, Config Connector on the workload cluster, upgrades |
 | [docs/airgap.md](docs/airgap.md) | Zarf air-gap bundle: package build, offline deploy, verification checklist, update drill |
 
 ## Repository layout
