@@ -90,6 +90,13 @@ pub struct Environment {
     /// replacement for pivot-sops-secrets). Relative to the repository root.
     #[serde(default)]
     pub pivot_manifests: Vec<String>,
+    /// Substitution overrides for pivot-manifests (issue #72): values that
+    /// must differ between the bootstrap cluster (where Flux substituted them
+    /// from its ConfigMaps) and the pivot target. Applied on top of the
+    /// flux-system ConfigMap data before `${VAR}` replacement (gcp: the
+    /// workload-identity provider is `kind` in kind and `mgmt` afterwards).
+    #[serde(default)]
+    pub pivot_manifest_vars: IndexMap<String, String>,
     /// Teardown constants for this environment (issue #100).
     #[serde(default)]
     pub teardown: TeardownEnv,
@@ -421,6 +428,25 @@ manifest = "mgmt/aws/infrastructure/aws-identity/identity.yaml"
         let aws = config.environment("aws").unwrap();
         assert!(aws.post_kind_create_task.is_none());
         assert!(aws.pivot_manifests.is_empty());
+    }
+
+    #[test]
+    fn parses_pivot_manifest_vars() {
+        let text = format!(
+            "{MINIMAL}\n[environments.gcp]\nkind = \"gcp\"\nsync = \"github\"\n\
+             sync-path = \"mgmt/gcp\"\nmgmt-cluster = \"europe-north1-management\"\n\
+             mgmt-ready-timeout = \"40m\"\ninfra-provider-namespace = \"capg-system\"\n\
+             infra-provider-name = \"gcp\"\nprovider-manifests = []\n\
+             pivot-manifests = [\"mgmt/gcp/x.yaml\"]\n\
+             [environments.gcp.pivot-manifest-vars]\nGCP_WIF_PROVIDER = \"mgmt\"\n"
+        );
+        let config = parse(&text).unwrap();
+        let gcp = config.environment("gcp").unwrap();
+        assert_eq!(gcp.pivot_manifest_vars.len(), 1);
+        assert_eq!(gcp.pivot_manifest_vars["GCP_WIF_PROVIDER"], "mgmt");
+        // Existing environments default to no overrides.
+        let aws = config.environment("aws").unwrap();
+        assert!(aws.pivot_manifest_vars.is_empty());
     }
 
     #[test]

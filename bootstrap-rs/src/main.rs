@@ -431,30 +431,61 @@ fn post_kind_create_hook_args<'a>(profile: &'a str, task: &'a str) -> Vec<&'a st
     vec!["-E", profile, "run", task]
 }
 
-/// Replace `${VAR}` placeholders in a pivot manifest from `vars` (the
-/// ConfigMap data the bootstrap cluster's Flux already reconciled). Unknown
-/// placeholders are left literal so `remaining_manifest_vars` can name them.
+/// Replace `${VAR}` and `${VAR:=default}` placeholders in a pivot manifest
+/// from `vars` (the ConfigMap data the bootstrap cluster's Flux already
+/// reconciled). `${VAR:=default}` (issue #72) renders the configured value
+/// when `VAR` is present and the default otherwise, so a placeholder can
+/// carry the post-pivot value while the bootstrap cluster substitutes the
+/// live one. Plain `${VAR}` placeholders with no value are left literal so
+/// `remaining_manifest_vars` can name them.
 fn substitute_manifest_vars(
     manifest: &str,
     vars: &std::collections::HashMap<String, String>,
 ) -> String {
-    let mut out = manifest.to_string();
-    for (key, value) in vars {
-        out = out.replace(&format!("${{{key}}}"), value);
+    let mut out = String::with_capacity(manifest.len());
+    let mut rest = manifest;
+    while let Some(start) = rest.find("${") {
+        out.push_str(&rest[..start]);
+        rest = &rest[start + 2..];
+        let Some(end) = rest.find('}') else {
+            out.push_str("${");
+            out.push_str(rest);
+            return out;
+        };
+        let inner = &rest[..end];
+        let (name, default) = match inner.find(":=") {
+            Some(i) => (&inner[..i], Some(&inner[i + 2..])),
+            None => (inner, None),
+        };
+        if let Some(value) = vars.get(name) {
+            out.push_str(value);
+        } else if let Some(d) = default {
+            out.push_str(d);
+        } else {
+            out.push_str("${");
+            out.push_str(inner);
+            out.push('}');
+        }
+        rest = &rest[end + 1..];
     }
+    out.push_str(rest);
     out
 }
 
-/// The `${VAR}` placeholder names still present in a manifest.
+/// The `${VAR}` placeholder names still present in a manifest (issue #72):
+/// placeholders that carry a default (`${VAR:=...}`) never count, because
+/// they resolve to that default; only plain `${VAR}` names remain.
 fn remaining_manifest_vars(manifest: &str) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
     let mut rest = manifest;
     while let Some(start) = rest.find("${") {
         rest = &rest[start + 2..];
         let Some(end) = rest.find('}') else { break };
-        let name = rest[..end].to_string();
-        if !names.contains(&name) {
-            names.push(name);
+        let inner = &rest[..end];
+        // A default (`${VAR:=...}`) means the placeholder resolves, so only
+        // plain `${VAR}` (no `:=`) counts as remaining.
+        if inner.split_once(":=").is_none() && !names.contains(&inner.to_string()) {
+            names.push(inner.to_string());
         }
         rest = &rest[end + 1..];
     }
@@ -1923,7 +1954,15 @@ async fn pivot_install_capi_in_target(
     // no source value.
     if !cfg.environment.pivot_manifests.is_empty() {
         println!(">>> Applying pivot manifests in the target...");
-        let vars = flux_namespace_vars(&cfg.repo.bootstrap.flux_namespace).await?;
+        let mut vars = flux_namespace_vars(&cfg.repo.bootstrap.flux_namespace).await?;
+        // Environment overrides are applied on top of the ConfigMap data
+        // (issue #72): the merge above is unordered across ConfigMaps, so a
+        // value that differs between the bootstrap cluster and the target
+        // (gcp: GCP_WIF_PROVIDER is `kind` in kind, `mgmt` afterwards) is
+        // forced here rather than left to the unordered ConfigMap merge.
+        for (key, value) in &cfg.environment.pivot_manifest_vars {
+            vars.insert(key.clone(), value.clone());
+        }
         for manifest in &cfg.environment.pivot_manifests {
             let raw = std::fs::read_to_string(manifest)
                 .with_context(|| format!("failed to read pivot manifest '{manifest}'"))?;
@@ -2849,6 +2888,38 @@ mod tests {
     }
 
     #[test]
+    fn substitute_manifest_vars_supports_defaults() {
+        // ${VAR:=default} renders the default when VAR is unset, and the
+        // configured value when it is set (issue #72: GCP_WIF_PROVIDER is
+        // `kind` on the bootstrap cluster, `mgmt` after the pivot override).
+        let empty: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let manifest = "audience: \"//pools/krops/providers/${GCP_WIF_PROVIDER:=mgmt}\"";
+        assert_eq!(
+            substitute_manifest_vars(manifest, &empty),
+            "audience: \"//pools/krops/providers/mgmt\""
+        );
+        let mut set = std::collections::HashMap::new();
+        set.insert("GCP_WIF_PROVIDER".to_string(), "kind".to_string());
+        assert_eq!(
+            substitute_manifest_vars(manifest, &set),
+            "audience: \"//pools/krops/providers/kind\""
+        );
+    }
+
+    #[test]
+    fn remaining_manifest_vars_ignores_placeholders_with_defaults() {
+        // A ${VAR:=default} never counts as "remaining" (it has a value),
+        // but a plain ${VAR} still does.
+        let with_default = "a: \"${GCP_WIF_PROVIDER:=mgmt}\"";
+        assert!(remaining_manifest_vars(with_default).is_empty());
+        let without_default = "a: \"${GCP_WIF_PROVIDER}\"";
+        assert_eq!(
+            remaining_manifest_vars(without_default),
+            vec!["GCP_WIF_PROVIDER".to_string()]
+        );
+    }
+
+    #[test]
     fn pivot_manifests_apply_after_provider_manifests() {
         // Guard the Phase 3 ordering contract: pivot-manifests are applied
         // after provider CRs (CAPZ must exist before its identity Secret is
@@ -2871,6 +2942,33 @@ mod tests {
         assert!(
             plain < sops,
             "pivot-manifests must apply before pivot-sops-secrets"
+        );
+    }
+
+    #[test]
+    fn pivot_manifest_vars_apply_before_substitution() {
+        // Guard the ordering contract: the environment overrides must be
+        // merged into the ConfigMap-derived vars BEFORE any pivot manifest is
+        // substituted, or the override would never reach the manifest (issue
+        // #72). The override loop sits between the flux_namespace_vars read
+        // and the substitution loop.
+        let src = include_str!("main.rs");
+        let read_vars = src
+            .find("flux_namespace_vars(&cfg.repo.bootstrap.flux_namespace).await?")
+            .unwrap();
+        let apply_overrides = src
+            .find("for (key, value) in &cfg.environment.pivot_manifest_vars")
+            .unwrap();
+        let substitute = src
+            .find("let substituted = substitute_manifest_vars(&raw, &vars)")
+            .unwrap();
+        assert!(
+            read_vars < apply_overrides,
+            "pivot_manifest_vars must be read after the ConfigMap vars"
+        );
+        assert!(
+            apply_overrides < substitute,
+            "pivot_manifest_vars must be applied before substitution"
         );
     }
 
