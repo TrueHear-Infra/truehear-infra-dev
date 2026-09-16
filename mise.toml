@@ -64,6 +64,11 @@ if ! uv run python tests/test-azure-identity-chain.py; then
   echo "    FAILED: azure identity chain" >&2
   fail=1
 fi
+echo "==> gcp identity chain"
+if ! uv run python tests/test-gcp-identity-chain.py; then
+  echo "    FAILED: gcp identity chain" >&2
+  fail=1
+fi
 echo "==> kcc operator pin"
 if ! python3 tests/test-kcc-operator-pin.py; then
   echo "    FAILED: kcc operator pin" >&2
@@ -121,7 +126,7 @@ run = "scripts/toolbox-run.sh pivot"
 [tasks.mgmt-kubeconfig]
 description = "Export the management-cluster kubeconfig to ~/.kube/krops-mgmt.yaml"
 run = '''
-MGMT_CLUSTER="${MGMT_CLUSTER:-$(case "${KROPS_PROFILE:-aws}" in local-host) echo local-management;; local-talos) echo local-talos-management;; azure) echo swedencentral-management;; *) echo eu-north-1-management;; esac)}"
+MGMT_CLUSTER="${MGMT_CLUSTER:-$(case "${KROPS_PROFILE:-aws}" in local-host) echo local-management;; local-talos) echo local-talos-management;; azure) echo swedencentral-management;; gcp) echo europe-north1-management;; *) echo eu-north-1-management;; esac)}"
 MGMT_KUBECONFIG="${MGMT_KUBECONFIG:-$HOME/.kube/krops-mgmt.yaml}"
 clusterctl get kubeconfig "$MGMT_CLUSTER" -n default > "$MGMT_KUBECONFIG"
 chmod 600 "$MGMT_KUBECONFIG"
