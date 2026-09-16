@@ -1,0 +1,32 @@
+---
+# CAPG v1.13.1 speaks the v1beta1 contract (accepted by CAPI v1.14 until the
+# v1beta1 removal). GKE clusters use GCPManagedCluster / GCPManagedControlPlane /
+# GCPManagedMachinePool. The patch swaps the manager's credentials volume from
+# the operator-rendered key Secret to the secret-free WIF configuration; the
+# full volume list is declared so the result is identical under strategic and
+# JSON-merge patch semantics (spike S1).
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: InfrastructureProvider
+metadata:
+  name: gcp
+  namespace: capg-system
+spec:
+  version: "v1.13.1"
+  configSecret:
+    name: capg-variables
+  patches:
+    - target:
+        kind: Deployment
+        name: capg-controller-manager
+      patch: |
+        spec:
+          template:
+            spec:
+              volumes:
+                - name: cert
+                  secret:
+                    defaultMode: 420
+                    secretName: capg-webhook-service-cert
+                - name: credentials
+                  secret:
+                    secretName: capg-wif-credentials

@@ -1,0 +1,20 @@
+---
+# ══════════════════════════════════════════════════════════════════════════════
+# Variables the CAPI operator substitutes into the CAPG manifest (configSecret).
+# Nothing here is secret (the operator requires a Secret, not a ConfigMap).
+# GKE and MachinePool are opt-in feature gates in CAPG v1.13.1
+# (--feature-gates=GKE=${EXP_CAPG_GKE:=false},MachinePool=${EXP_MACHINE_POOL:=false}).
+# GCP_B64ENCODED_CREDENTIALS is base64("{}"): the operator-rendered
+# capg-manager-bootstrap-credentials Secret must exist but is never read; the
+# manager's credentials volume is swapped to capg-wif-credentials (providers.yaml).
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: Secret
+metadata:
+  name: capg-variables
+  namespace: capg-system
+type: Opaque
+stringData:
+  EXP_CAPG_GKE: "true"
+  EXP_MACHINE_POOL: "true"
+  GCP_B64ENCODED_CREDENTIALS: "e30="
