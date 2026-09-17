@@ -1,29 +1,23 @@
 ---
 # ══════════════════════════════════════════════════════════════════════════════
-# Flux Kustomization: the workload-cluster Config Connector CR (the operator
-# lives in the kcc-operator Kustomization). No wait: the ConfigConnector CR
-# has no standard ready condition the Kustomization can observe, so this
-# Kustomization completes on apply and the resource Kustomizations below
-# (networking, storage, postgres, iam) order after the operator via
-# dependsOn: kcc-operator.
+# Flux Kustomization: the workload-cluster Config Connector operator.
+# wait: true so the kcc Kustomization's ConfigConnector CR only lands once
+# the operator StatefulSet is Ready (the management-side kcc-operator
+# precedent). The pinned bundle ships its own webhook certs, so there is no
+# cert-manager dependency on the workload cluster.
 # ══════════════════════════════════════════════════════════════════════════════
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: kcc
+  name: kcc-operator
   namespace: flux-system
 spec:
   interval: 10m
   retryInterval: 2m
   timeout: 15m
   prune: true
+  wait: true
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./workload/gcp-base/kcc
-  dependsOn:
-    - name: kcc-operator
-  postBuild:
-    substituteFrom:
-      - kind: ConfigMap
-        name: cluster-vars
+  path: ./workload/gcp-base/kcc-operator

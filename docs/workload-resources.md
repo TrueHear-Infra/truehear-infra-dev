@@ -57,24 +57,38 @@ instance per cluster (`krops-<cluster>-db`), zonal, with:
 - `requireSsl: true` + `sslMode: ENCRYPTED_ONLY`
 - IAM authentication only (`cloudsql.iam_authentication: on`): the reader
   user is the per-cluster reader service account, so no password exists
-  anywhere (the AWS `manageMasterUserPassword` / Azure flexible-server
-  counterparts use a stored password; the GCP path does not)
+  anywhere. AWS and Azure take the same posture by different mechanisms:
+  RDS uses `manageMasterUserPassword` (the password is generated and held
+  in Secrets Manager, not in Git or the cluster) and the Azure flexible
+  server sets `passwordAuth: Disabled` (Entra ID only)
 
 Connection:
 
 ```sh
-gcloud auth application-default login --impersonate-service-account krops-reader@<project-id>.iam.gserviceaccount.com
-gcloud sql connect krops-europe-north1-workload-db --db=app --zone=europe-north1-a
+# Impersonate the per-cluster reader GSA (the SQLUser), then connect.
+gcloud auth application-default login \
+  --impersonate-service-account krops-<cluster>-r@<project-id>.iam.gserviceaccount.com
+gcloud sql connect krops-<cluster>-db --db=app --zone=europe-north1-a
 ```
+
+`gcloud sql connect` additionally needs the Cloud SQL Client
+(`roles/cloudsql.client`) or the instance's `cloudsql.instances.get` +
+`cloudsql.instances.update` permissions on top of the reader's
+`cloudsql.instanceUser` login role, so the human's project grants must cover
+both the connect path and the impersonation.
 
 ### Per-cluster reader identity
 
 `workload/gcp-base/iam/reader.yaml` creates the per-cluster reader service
-account (`krops-<cluster>-reader`) with `storage.objectViewer` on the
-bucket and `cloudsql.viewer` on the project, plus a
+account (`krops-<cluster>-r`; the accountId is capped at GCP's 30-char
+service-account ID limit) with `storage.objectViewer` on the bucket and
+`cloudsql.instanceUser` on the project (the IAM database-auth login role,
+which carries `cloudsql.instances.login`), plus a
 `roles/iam.serviceAccountTokenCreator` grant ON the per-cluster account
-whose member is the project-level `krops-reader` GSA: the human identity
-can impersonate the per-cluster reader (least privilege per cluster, like
-the AWS reader role). `tests/test-gcp-identity-chain.py` (in `mise run
+whose member is the project-level `krops-reader` GSA. The per-cluster GSA
+is also the Cloud SQL `SQLUser`, so the effective database identity is the
+per-cluster reader; the human path is human IAM account to `krops-reader`
+(imperative token-creator grant from gcp-bootstrap) to the per-cluster
+reader (the grant above). `tests/test-gcp-identity-chain.py` (in `mise run
 validate` and CI) cross-checks the identity couplings between these and
 `mgmt/gcp/`.

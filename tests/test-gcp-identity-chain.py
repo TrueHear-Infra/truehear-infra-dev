@@ -22,7 +22,12 @@ MISE_GCP = REPO_ROOT / "mise.gcp.toml"
 BOOTSTRAP = REPO_ROOT / "bootstrap.toml"
 KCC_WORKLOAD = REPO_ROOT / "workload/gcp-base/kcc/configconnector.yaml"
 READER = REPO_ROOT / "workload/gcp-base/iam/reader.yaml"
+SQL = REPO_ROOT / "workload/gcp-base/postgres/postgres.yaml"
+CLUSTER_VARS = REPO_ROOT / "mgmt/gcp/addons/flux-apps/flux-instance.yaml"
 KCC_WORKLOAD_SA = "cnrm-system/cnrm-controller-manager"
+# Per-cluster reader GSA accountId template (the -reader / -rd forms are 35 /
+# 31 chars, over GCP's 30-char service account ID limit; -r is 30 and fits).
+READER_ACCOUNT = "krops-${CLUSTER_NAME}-r"
 
 # The service accounts the workload-identity pool admits. CAPG exchanges on
 # kind (provider `kind`) and post-pivot (provider `mgmt`); the management-side
@@ -186,12 +191,59 @@ def main() -> int:
     if kcc_sec["metadata"]["namespace"] != "cnrm-system":
         failures.append(f"(f) {MGMT_KCC.relative_to(REPO_ROOT)}/kcc-wif-credentials.yaml: namespace must be cnrm-system")
 
-    # ── the human reader's objectViewer grant targets the per-cluster GSA. ──
-    reader_grants = [d for d in docs(READER) if d.get("kind") == "IAMPolicyMember" and d["spec"].get("role") == "roles/storage.objectViewer"]
-    if len(reader_grants) != 1:
-        failures.append(f"{READER.relative_to(REPO_ROOT)}: expected 1 storage.objectViewer grant, got {len(reader_grants)}")
-    elif "krops-${CLUSTER_NAME}-reader" not in reader_grants[0]["spec"]["member"]:
-        failures.append(f"{READER.relative_to(REPO_ROOT)}: objectViewer grant must reference the per-cluster reader GSA")
+    # ── the per-cluster reader GSA: the accountId template fits GCP's
+    # 30-char limit for the real cluster name, the grants name it, and the
+    # PostgreSQL SQLUser is that GSA's email in the required truncated .iam
+    # form (the project-level krops-reader has no cloudsql.instances.login,
+    # so the DB user must be the per-cluster GSA). ─────────────────────────
+    cluster_name = None
+    for d in docs(CLUSTER_VARS):
+        if d and d.get("kind") == "ConfigMap":
+            # CLUSTER_NAME is embedded in the flux-instance.yaml artifact
+            # string inside the ConfigMap's data.
+            m = re.search(r'CLUSTER_NAME:\s*"([^"]+)"', str(d.get("data", {})))
+            if m:
+                cluster_name = m.group(1)
+    if cluster_name is None:
+        failures.append(f"{CLUSTER_VARS.relative_to(REPO_ROOT)}: CLUSTER_NAME not found in cluster-vars")
+    else:
+        sa_name = READER_ACCOUNT.replace("${CLUSTER_NAME}", cluster_name)
+        if len(sa_name) > 30:
+            failures.append(
+                f"(g) per-cluster reader accountId `{sa_name}` is {len(sa_name)} chars; "
+                f"GCP service account IDs are capped at 30")
+
+    reader_sa = [d for d in docs(READER) if d.get("kind") == "IAMServiceAccount"]
+    if len(reader_sa) != 1:
+        failures.append(f"{READER.relative_to(REPO_ROOT)}: expected 1 IAMServiceAccount, got {len(reader_sa)}")
+    elif reader_sa[0]["spec"].get("accountId") != READER_ACCOUNT:
+        failures.append(
+            f"{READER.relative_to(REPO_ROOT)}: accountId must be `{READER_ACCOUNT}` "
+            f"(GCP 30-char limit), got {reader_sa[0]['spec'].get('accountId')}")
+
+    for role in ("roles/storage.objectViewer", "roles/cloudsql.instanceUser"):
+        grants = [d for d in docs(READER) if d.get("kind") == "IAMPolicyMember" and d["spec"].get("role") == role]
+        if len(grants) != 1:
+            failures.append(f"{READER.relative_to(REPO_ROOT)}: expected 1 {role} grant, got {len(grants)}")
+        elif READER_ACCOUNT not in grants[0]["spec"]["member"]:
+            failures.append(
+                f"{READER.relative_to(REPO_ROOT)}: {role} grant must reference the "
+                f"per-cluster reader GSA `{READER_ACCOUNT}`, got {grants[0]['spec']['member']}")
+
+    sql_users = [d for d in docs(SQL) if d.get("kind") == "SQLUser"]
+    if len(sql_users) != 1:
+        failures.append(f"{SQL.relative_to(REPO_ROOT)}: expected 1 SQLUser, got {len(sql_users)}")
+    else:
+        u = sql_users[0]["spec"]
+        want = f"{READER_ACCOUNT}@${{GCP_PROJECT}}.iam"
+        if u.get("name") != want:
+            failures.append(
+                f"(g) {SQL.relative_to(REPO_ROOT)}: SQLUser name must be the per-cluster "
+                f"reader GSA email in PostgreSQL's truncated form `{want}`, got {u.get('name')}")
+        if u.get("type") != "CLOUD_IAM_SERVICE_ACCOUNT":
+            failures.append(f"{SQL.relative_to(REPO_ROOT)}: SQLUser type must be CLOUD_IAM_SERVICE_ACCOUNT")
+        if "host" in u:
+            failures.append(f"{SQL.relative_to(REPO_ROOT)}: SQLUser host is MySQL-only; drop it for PostgreSQL")
 
     if failures:
         print("gcp identity chain FAILED:")
