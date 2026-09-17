@@ -62,6 +62,8 @@ not a developer self-service portal; you are the consumer.
 
 ![krops azure architecture](docs/azure-infra.svg)
 
+![krops gcp architecture](docs/gcp-infra.svg)
+
 ![krops local-host architecture](docs/local-host-infra.svg)
 
 ![krops local-talos architecture](docs/local-talos-infra.svg)
