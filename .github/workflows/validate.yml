@@ -100,6 +100,11 @@ jobs:
           uv sync --locked
           uv run python tests/test-azure-identity-chain.py
 
+      - name: GCP identity chain cross-check
+        run: |
+          uv sync --locked
+          uv run python tests/test-gcp-identity-chain.py
+
       - name: KCC operator pin cross-check
         run: python3 tests/test-kcc-operator-pin.py
 

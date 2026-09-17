@@ -1,0 +1,47 @@
+---
+# ══════════════════════════════════════════════════════════════════════════════
+# Private Service Access for Cloud SQL (issue #72, the AWS NAT/egress and
+# Azure delegated-subnet counterparts).
+#
+# A global ComputeAddress reserves a /16 in the global IP space for the PSA
+# range, and ServiceNetworkingConnection peers it into the workload VPC (the
+# VPC CAPG creates, named in cluster-vars). Cloud SQL's private IP is then
+# allocated from that range (postgres/). The KCC v1.156.0 bundle has no
+# ComputeGlobalAddress kind; a ComputeAddress with location: global is the
+# equivalent (its location field takes the literal "global").
+#
+# dependsOn: kcc so the KCC operator StatefulSet is Ready before these CRs
+# land (the kcc Kustomization orders after kcc-operator). KCC reports
+# readiness on managed resources via status.conditions, so wait: true on this
+# Kustomization blocks until the range and peering are actually created, and
+# postgres (dependsOn: networking) is safe to order after it.
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: compute.cnrm.cloud.google.com/v1beta1
+kind: ComputeAddress
+metadata:
+  name: psa
+  namespace: default
+spec:
+  name: krops-${CLUSTER_NAME}-psa
+  location: global
+  purpose: VPC_PEERING
+  addressType: INTERNAL
+  prefixLength: 16
+  networkRef:
+    external: "projects/${GCP_PROJECT}/global/networks/${GCP_NETWORK}"
+---
+apiVersion: servicenetworking.cnrm.cloud.google.com/v1beta1
+kind: ServiceNetworkingConnection
+metadata:
+  name: psa
+  namespace: default
+spec:
+  networkRef:
+    external: "projects/${GCP_PROJECT}/global/networks/${GCP_NETWORK}"
+  reservedPeeringRanges:
+    # Reference the KCC-managed ComputeAddress by its metadata.name (same
+    # namespace). The v1.156.0 schema allows name/namespace or external here;
+    # external must be the address's GCP `name` field, but the K8s reference
+    # is the documented form for a managed ComputeAddress.
+    - name: psa
+  service: "servicenetworking.googleapis.com"

@@ -88,7 +88,7 @@ restricted by `attributeCondition` to exactly those two service accounts.
 
 ```sh
 mise -E gcp run bootstrap        # kind + Flux + CAPG; then pivot into europe-north1-management
-mise -E gcp run mgmt-kubeconfig  # ~/.kube/krops-mgmt.yaml
+mise run mgmt-kubeconfig         # ~/.kube/krops-mgmt.yaml (mgmt-kubeconfig in mise.toml)
 mise -E gcp run kubeconfigs      # workload kubeconfigs (user kubeconfig Secrets)
 ```
 
@@ -123,10 +123,11 @@ Kustomizations substitute from `gcp-vars` plus the optional `gcp-wif`
 ConfigMap, so their first reconcile on a fresh source can fail once and
 succeeds on the 2-minute retry.
 
-Workload cluster (PR 2): cert-manager, kcc (the operator + the cluster-mode
-ConfigConnector), then networking (Private Service Access), storage
-(bucket), postgres (Cloud SQL, depends on networking) and iam (per-cluster
-reader).
+Workload cluster (PR 2): kcc-operator (the operator, waited on; the pinned
+bundle ships its own webhook certs, so no cert-manager), kcc (the
+cluster-mode ConfigConnector), then networking (Private Service Access),
+storage (bucket), postgres (Cloud SQL, depends on networking) and iam
+(per-cluster reader).
 
 ## Upgrading CAPG and the Config Connector operator
 

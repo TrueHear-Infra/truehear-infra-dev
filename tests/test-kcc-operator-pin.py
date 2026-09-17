@@ -20,7 +20,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OPERATOR_FILES = [
     REPO_ROOT / "mgmt/gcp/infrastructure/kcc-operator/configconnector-operator.yaml",
-    REPO_ROOT / "workload/gcp-base/kcc/configconnector-operator.yaml",
+    REPO_ROOT / "workload/gcp-base/kcc-operator/configconnector-operator.yaml",
 ]
 VERSION_RE = re.compile(r"^# kcc-operator-version: (?P<version>[0-9.]+)\s*$", re.MULTILINE)
 IMAGE_RE = re.compile(

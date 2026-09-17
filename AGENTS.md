@@ -91,8 +91,9 @@ resources. There is no app source code here, only declarative infrastructure.
     `tests/test-azure-identity-chain.py` (in `mise run validate` and CI)
     cross-checks the ConfigMap/subject couplings between these and
     `mgmt/azure/infrastructure/aso-workload-identity/`.
-  - `gcp-base/` (PR 2, issue #72): cert-manager, Config Connector (the same
-    pinned operator bundle as the management side) and the GCP resources
+  - `gcp-base/` (PR 2, issue #72): Config Connector (the same
+    pinned operator bundle as the management side; it ships its own webhook
+    certs, so no cert-manager) and the GCP resources
     (PSA range + peering, storage bucket, Cloud SQL with IAM-only auth,
     per-cluster reader GSA). `europe-north1-01/` points at it;
     `tests/test-gcp-identity-chain.py` cross-checks the WIF

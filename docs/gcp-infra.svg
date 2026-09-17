@@ -218,10 +218,9 @@
   <circle cx="1140" cy="510" r="15" fill="#68C5EB"/>
   <text x="1140" y="516" text-anchor="middle" font-family="DejaVu Sans" font-size="15" font-weight="bold" fill="#0C120F">3</text>
   <text x="1168" y="506" font-family="DejaVu Sans" font-size="17" fill="#D4E2DA">Workload cluster runs local Flux:</text>
-  <text x="1168" y="540" font-family="DejaVu Sans Mono" font-size="17" fill="#D4E2DA">1. <tspan fill="#FFFFFF">cert-manager</tspan></text>
-  <text x="1168" y="568" font-family="DejaVu Sans Mono" font-size="17" fill="#D4E2DA">2. <tspan fill="#FFFFFF">kcc</tspan> <tspan font-family="DejaVu Sans" font-size="15" fill="#859D91">(GKE Workload Identity)</tspan></text>
-  <text x="1168" y="596" font-family="DejaVu Sans Mono" font-size="17" fill="#D4E2DA">3. <tspan fill="#FFFFFF">networking &#183; storage</tspan></text>
-  <text x="1168" y="624" font-family="DejaVu Sans Mono" font-size="17" fill="#D4E2DA">4. <tspan fill="#FFFFFF">postgres &#183; iam</tspan> <tspan font-family="DejaVu Sans" font-size="14.5" fill="#859D91">(dependsOn)</tspan></text>
+  <text x="1168" y="540" font-family="DejaVu Sans Mono" font-size="17" fill="#D4E2DA">1. <tspan fill="#FFFFFF">kcc</tspan> <tspan font-family="DejaVu Sans" font-size="15" fill="#859D91">(GKE Workload Identity)</tspan></text>
+  <text x="1168" y="568" font-family="DejaVu Sans Mono" font-size="17" fill="#D4E2DA">2. <tspan fill="#FFFFFF">networking · storage</tspan></text>
+  <text x="1168" y="596" font-family="DejaVu Sans Mono" font-size="17" fill="#D4E2DA">3. <tspan fill="#FFFFFF">postgres · iam</tspan> <tspan font-family="DejaVu Sans" font-size="14.5" fill="#859D91">(dependsOn)</tspan></text>
   <line x1="1122" y1="658" x2="1504" y2="658" stroke="#1F362A" stroke-width="1.2"/>
 
   <!-- step 4 -->
