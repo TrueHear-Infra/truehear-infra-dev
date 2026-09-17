@@ -54,7 +54,15 @@ fi
 export CLUSTER_NAME=airgap-mgmt
 export REGISTRY_NAME=krops-registry-airgap
 export REGISTRY_PORT=5002
-MGMT_CTX="kind-airgap-mgmt"
+# Prototype (#333): MGMT_CLUSTER_ENGINE=k3s swaps the management substrate
+# from a kind node container to Zarf's own k3s init component, Linux-only,
+# see docs/airgap.md#empirical-findings-why-the-package-looks-the-way-it-does.
+MGMT_CLUSTER_ENGINE="${MGMT_CLUSTER_ENGINE:-kind}"
+if [ "$MGMT_CLUSTER_ENGINE" = "k3s" ]; then
+  MGMT_CTX="default"
+else
+  MGMT_CTX="kind-airgap-mgmt"
+fi
 WL_KCFG=/tmp/airgap-wl.kubeconfig
 
 step() { echo ""; echo "===== [$(date +%H:%M:%S)] $* ====="; }
@@ -112,17 +120,32 @@ if [ "$sbom_found" -eq 0 ]; then
 fi
 pass "package signature, checksums, and embedded SBOMs verified offline ($SBOM_OUTPUT)"
 
-step "2. stage: docker load + kind create + seed registry"
+step "2. stage: docker load + mgmt substrate prep + seed registry"
 if CLUSTER_NAME=$CLUSTER_NAME REGISTRY_NAME=$REGISTRY_NAME REGISTRY_PORT=$REGISTRY_PORT \
+     MGMT_CLUSTER_ENGINE=$MGMT_CLUSTER_ENGINE \
      "$AIRGAP_DIR/scripts/stage-and-create-cluster.sh"; then
-  pass "stage (docker load, kind create, registry seed)"
+  pass "stage (docker load, mgmt substrate prep, registry seed)"
 else
   fail "stage-and-create-cluster.sh"
   exit 1
 fi
 
 step "3. zarf init"
-if ( cd "$AIRGAP_DIR" && "$ZARF" init "$ARCHIVES/zarf-init-arm64.tar.zst" \
+if [ "$MGMT_CLUSTER_ENGINE" = "k3s" ]; then
+  # The k3s init component requires literal root, not sudo's default
+  # environment (undocumented Zarf/k3s quirk: --preserve-env keeps zarf and
+  # k3s resolving the same $HOME/$PATH the rest of this script uses).
+  if ( cd "$AIRGAP_DIR" && sudo --preserve-env=HOME,PATH "$ZARF" init \
+         "$ARCHIVES/zarf-init-arm64.tar.zst" \
+         --registry-mode=nodeport --components=k3s --confirm ); then
+    sudo install -m 0644 /etc/rancher/k3s/k3s.yaml "$KUBECONFIG"
+    sudo chown "$(id -u):$(id -g)" "$KUBECONFIG"
+    pass "zarf init"
+  else
+    fail "zarf init"
+    exit 1
+  fi
+elif ( cd "$AIRGAP_DIR" && "$ZARF" init "$ARCHIVES/zarf-init-arm64.tar.zst" \
        --registry-mode=nodeport --components="" --confirm ); then
   pass "zarf init"
 else

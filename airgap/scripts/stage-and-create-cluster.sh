@@ -10,10 +10,14 @@
 #        recreated in Phase 5 for the workload cluster's Flux).
 #      - workload-pod-images.tar: flux-operator, flux controllers, podinfo —
 #        consumed via preLoadImages by CAPD DevMachineTemplates (Phase 5).
-# 2. Creates the kind management cluster (same shape as bootstrap.sh:
+# 2. Creates the mgmt cluster substrate. MGMT_CLUSTER_ENGINE=kind (default)
+#    creates a kind management cluster (same shape as bootstrap.sh:
 #    control-plane node with the Docker socket mounted; NO registry mirror
 #    patch — in the gap, pod images reach the node through the Zarf agent's
-#    rewrite to the nodeport registry).
+#    rewrite to the nodeport registry). MGMT_CLUSTER_ENGINE=k3s (prototype,
+#    #333, Linux only) skips this entirely: zarf init's own k3s component
+#    installs k3s directly on the host, so the real /var/run/docker.sock is
+#    already where CAPD's manifest expects it, no bridging needed.
 #
 # Everything here must work with Wi-Fi off.
 set -euo pipefail
@@ -25,6 +29,7 @@ ARCHIVES="$AIRGAP_DIR/archives"
 CLUSTER_NAME="${CLUSTER_NAME:-mgmt}"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5}"
 DOCKER_SOCKET_PATH="${DOCKER_SOCKET_PATH:-/var/run/docker.sock}"
+MGMT_CLUSTER_ENGINE="${MGMT_CLUSTER_ENGINE:-kind}"
 
 if [ ! -S "$DOCKER_SOCKET_PATH" ]; then
   echo "ERROR: Docker socket does not exist: ${DOCKER_SOCKET_PATH}" >&2
@@ -37,7 +42,9 @@ for tar in "$ARCHIVES"/*.tar; do
   docker load -i "$tar" >/dev/null
 done
 
-if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
+if [ "$MGMT_CLUSTER_ENGINE" = "k3s" ]; then
+  echo ">>> MGMT_CLUSTER_ENGINE=k3s: skipping kind: zarf init installs the mgmt substrate"
+elif kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
   echo ">>> kind cluster '${CLUSTER_NAME}' already exists; leaving it in place"
 else
   echo ">>> Creating kind cluster '${CLUSTER_NAME}' (image ${KIND_NODE_IMAGE})..."
@@ -52,8 +59,10 @@ nodes:
 EOF
 fi
 
-kubectl config use-context "kind-${CLUSTER_NAME}" >/dev/null
-kubectl wait --for=condition=Ready node --all --timeout=180s
+if [ "$MGMT_CLUSTER_ENGINE" != "k3s" ]; then
+  kubectl config use-context "kind-${CLUSTER_NAME}" >/dev/null
+  kubectl wait --for=condition=Ready node --all --timeout=180s
+fi
 
 # Recreate krops-registry (the workload cluster's Flux and CAAPH fetch from it;
 # the Zarf internal registry is only reachable inside the mgmt cluster).
@@ -69,6 +78,11 @@ registry_failure() {
 if ! docker ps --filter "name=^${REGISTRY_NAME}$" --format '{{.Names}}' | grep -q "$REGISTRY_NAME"; then
   echo ">>> Creating registry container '${REGISTRY_NAME}' (localhost:${REGISTRY_PORT})..."
   docker rm -f "$REGISTRY_NAME" >/dev/null 2>&1 || true
+  # kind create cluster normally creates this network as a side effect; with
+  # MGMT_CLUSTER_ENGINE=k3s that never runs, but CAPD still creates/reuses
+  # "kind" for the workload cluster's own containers regardless of what
+  # bootstrapped the mgmt cluster, so it must exist before either uses it.
+  docker network inspect kind >/dev/null 2>&1 || docker network create kind >/dev/null
   docker run -d --name "$REGISTRY_NAME" --network kind \
     -p "127.0.0.1:${REGISTRY_PORT}:5000" \
     --health-cmd='wget --spider --quiet http://localhost:5000/v2/ || exit 1' \
