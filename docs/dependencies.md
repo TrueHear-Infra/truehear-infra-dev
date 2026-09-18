@@ -71,10 +71,40 @@ arguments. Renovate manages those base references and build arguments.
    renovate.json5".
 2. Review the raw and rendered diffs. The `validate` workflow checks kustomize
    builds, air-gap digest pinning, managed-pin extraction coverage,
-   `bootstrap.toml` consistency, and YAML.
+   `bootstrap.toml` consistency, YAML, and (#142) that `airgap/images.txt`'s
+   `kube-apiserver`/`kube-controller-manager`/`kube-proxy`/`kube-scheduler`,
+   `coredns`, `etcd`, and `pause` pins match what the pinned `kindest/node`
+   version's real `kubeadm` binary actually deploys
+   (`airgap/tests/test-airgap-kubeadm-images.py`), rather than drifting to
+   whatever the latest upstream tag happens to be. The workload cluster, the
+   CAPD management cluster, and the kind bootstrap mgmt node all run the
+   same `kindest/node` version. The check compares against `kubeadm config
+   images list` for that version, not a live `crictl` harvest against a
+   running node -- worth re-confirming there once an operator has one.
 3. For toolbox inputs, also require the `bootstrap-rs` workflow's Rust checks
    and container build/smoke job.
 4. Merge manually.
+
+The best fix for #142 items 3-4 would be Renovate itself running a script
+that regenerates `airgap/images.txt`'s k8s component pins from
+`kubeadm config images list` right after a `kindest/node` bump, via
+[`postUpgradeTasks`](https://docs.renovatebot.com/configuration-options/#postupgradetasks)
+with `executionMode: "branch"` -- the PR would open already correct, with
+nothing left to verify. That isn't available here: `postUpgradeTasks` is not
+enabled by default on the hosted Mend/Renovate GitHub App this repo runs,
+only on a self-hosted Renovate, and this repo deliberately moved off
+self-hosting (issue #90, `6ad1db6`) to avoid maintaining a runner. Mend has
+allowlisted `postUpgradeTasks` for individual hosted-App repos on request
+before (after reviewing the script), so this is a request to make, not a
+hard platform limit -- tracked in
+[renovatebot/renovate#46270](https://github.com/renovatebot/renovate/discussions/46270),
+with the tech debt tracked in #326. The `validate.yml`
+`test-airgap-kubeadm-images.py` check is the fallback in the meantime: it
+can't stop Renovate from proposing a stale tag, but it fails the PR before
+merge instead of letting the drift ship silently. If Mend allowlists
+`postUpgradeTasks` for this repo, or self-hosting is revisited, replacing
+this check with that script would close the gap properly and make the CI
+test redundant.
 
 If an image appears in both a manifest and the air-gap inventory
 (`airgap/images.txt` or `airgap/zarf.yaml`), update both in the same PR. There
