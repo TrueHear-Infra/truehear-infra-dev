@@ -88,6 +88,10 @@ jobs:
           file: bootstrap-rs/Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: true
+          # Disabled so the merge combines plain single-arch images; the
+          # default buildkit provenance would add unknown/unknown
+          # attestation children to the published index.
+          provenance: false
           tags: ghcr.io/polarsquad/krops-toolbox:${{ steps.version.outputs.value }}-linux-${{ matrix.arch }}
           labels: |
             org.opencontainers.image.version=${{ steps.version.outputs.value }}
