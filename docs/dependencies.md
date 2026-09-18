@@ -45,11 +45,31 @@ Renovate discovers and updates versions in:
 
 Grouping rules keep GitHub Actions updates together (excluding workflow container
 images and runners), Flux updates together, CAPI updates together, imperative
-chart pins with their declarative counterparts, and node-version updates
-separate. Renovate proposes one PR at the newest available version for each
-dependency, rather than parallel major and non-major update PRs. Base images
-in `bootstrap-rs/Dockerfile` and air-gap images are digest-pinned while
-retaining readable tags. Nothing automerges.
+chart pins with their declarative counterparts, and every pin whose value is a
+literal Kubernetes release version together. Renovate proposes one PR at the
+newest available version for each dependency, rather than parallel major and
+non-major update PRs. Base images in `bootstrap-rs/Dockerfile` and air-gap
+images are digest-pinned while retaining readable tags. Nothing automerges.
+
+The `kubernetes-version` group (#142) covers `kindest/node` (docker datasource:
+the local-host node image and both Cluster `topology.version` pins),
+`kubernetes/kubernetes` (github-releases datasource: the `kubectl` pin in
+`mise.toml` and the local-talos `TalosControlPlane.spec.version` annotation),
+and the `airgap/images.txt` images kubeadm itself deploys for that release
+(`kube-apiserver`, `kube-controller-manager`, `kube-proxy`, `kube-scheduler`,
+`coredns/coredns`, `etcd`, `pause`, all under the `registry.k8s.io` docker
+datasource). All of these carry a literal Kubernetes release version rather
+than an independent versioning scheme, so a Kubernetes bump opens a single PR
+across every file that tracks it. This gives same-PR visibility only:
+Renovate still resolves each images.txt component to its latest upstream tag,
+not the tag kubeadm deploys for the tracked release (etcd and coredns can
+drift, and `pause` differs between the two platforms), so a reviewer must
+reconcile them (see the update procedure). Other `registry.k8s.io`
+images (the CAPI/kubeadm provider controllers) are unaffected: they're
+matched by exact depName, not by registry host, and stay in the separate
+`cluster-api` group. The kind CLI and Talos's own `talosVersion`
+machine-config contract version each follow their own release cadence and
+are intentionally excluded from this group.
 
 ## Toolbox release version
 
@@ -83,7 +103,11 @@ arguments. Renovate manages those base references and build arguments.
    running node -- worth re-confirming there once an operator has one.
 3. For toolbox inputs, also require the `bootstrap-rs` workflow's Rust checks
    and container build/smoke job.
-4. Merge manually.
+4. For a `kubernetes-version` PR, re-harvest the images kubeadm deploys for
+   the new release (`crictl images` on a node) and reconcile the
+   `airgap/images.txt` component tags (`etcd`, `coredns/coredns`, `pause`)
+   with them before merging.
+5. Merge manually.
 
 The best fix for #142 items 3-4 would be Renovate itself running a script
 that regenerates `airgap/images.txt`'s k8s component pins from
@@ -113,8 +137,8 @@ verify the pairing during review.
 
 ## Intentional differences
 
-- The kind management node image, CAPD workload node images, and EKS cluster
-  versions are separate pins and can upgrade independently.
+- EKS cluster versions are not Renovate-managed pins and upgrade independently
+  of `kindest/node`.
 - EKS addon versions (`*-eksbuild.*`) have no public registry datasource and
   are updated manually.
 - Unversioned local tags such as
