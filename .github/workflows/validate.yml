@@ -50,6 +50,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 tests/test-mise-zarf-pin.py
 
+      - name: Verify cert-manager supports the pinned Kubernetes version (#322)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 tests/test-cert-manager-kubernetes-support.py --changed-from "$BASE_SHA"
+
   kustomize-build:
     name: Build kustomize overlays
     runs-on: ubuntu-latest
