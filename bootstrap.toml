@@ -15,7 +15,7 @@
 
 [bootstrap]
 default-environment = "aws"
-git-branch = "main"
+git-branch = "e2e/gcp-acceptance"
 kind-cluster = "mgmt"
 kind-context = "kind-mgmt"
 registry-name = "krops-registry"

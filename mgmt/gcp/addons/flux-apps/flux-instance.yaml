@@ -31,8 +31,8 @@ data:
     data:
       GCP_REGION: "europe-north1"
       CLUSTER_NAME: "europe-north1-workload"
-      GCP_PROJECT: "krops-placeholder"
-      GCP_PROJECT_NUMBER: "000000000000"
+      GCP_PROJECT: "josephs-sandbox-508907"
+      GCP_PROJECT_NUMBER: "96608837778"
       GCP_NETWORK: "krops-europe-north1-workload"
     ---
     apiVersion: fluxcd.controlplane.io/v1
@@ -62,7 +62,7 @@ data:
       sync:
         kind: GitRepository
         url: "https://github.com/polarsquad/krops"
-        ref: "refs/heads/main"
+        ref: "refs/heads/e2e/gcp-acceptance"
         path: "workload/europe-north1-01"
         pullSecret: "flux-github-pat"
 ---
