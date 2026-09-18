@@ -29,8 +29,9 @@ The `toolbox-release` workflow runs on `v*` tags. It requires the tag to match
 attaches a Syft SPDX JSON SBOM attestation. The `bootstrap-rs` CI workflow also
 builds and smokes the arm64 image when its inputs change.
 
-No semver release has been published yet. Build the current checkout as shown
-in [Operations](./operations.md) until the first tag completes the workflow.
+Published releases carry the stable tags described above; build the current
+checkout as shown in [Operations](./operations.md) only for unreleased
+changes.
 
 Build the CLI directly for native development:
 
