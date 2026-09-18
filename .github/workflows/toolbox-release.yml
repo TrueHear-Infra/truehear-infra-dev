@@ -79,9 +79,8 @@ jobs:
         uses: docker/setup-buildx-action@v4.3.0
 
       # Single-arch build, pushed under an internal <version>-linux-<arch> tag
-      # that the merge job consumes. Provenance is disabled so the merge
-      # yields a clean two-platform index. OCI labels carry the version and
-      # source provenance (metadata-action was dropped; see merge/sign jobs).
+      # that the merge job consumes. OCI labels carry the version and source
+      # provenance (metadata-action was dropped; see merge/sign jobs).
       - name: Build and push single-arch
         uses: docker/build-push-action@v7.3.0
         with:
