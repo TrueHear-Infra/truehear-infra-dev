@@ -140,7 +140,14 @@ arguments. Renovate manages those base references and build arguments.
    same `kindest/node` version. The check compares against `kubeadm config
    images list` for that version, not a live `crictl` harvest against a
    running node -- worth re-confirming there once an operator has one.
-   Also (#322) that the pinned cert-manager
+   Also (#322) that cert-manager's chart
+   version (`bootstrap.toml`) matches `pivot.sh`, `airgap/zarf.yaml`'s
+   embedded chart version, and the cert-manager image tags in
+   `airgap/images.txt`/`airgap/zarf.yaml`
+   (`tests/test-cert-manager-version-consistency.py`) -- catches the same
+   drift the `platform-charts` Renovate group prevents, regardless of how it
+   happens.
+   And (#322) that the pinned cert-manager
    version (`bootstrap.toml`) supports the pinned Kubernetes version
    (`tests/test-cert-manager-kubernetes-support.py`) whenever a Renovate PR
    changes either pin -- a daily scheduled deployment failed silently for two
