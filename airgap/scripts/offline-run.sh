@@ -43,9 +43,13 @@ VERIFY_ARGS=()
 if [ -n "${ZARF_VERIFY_KEY:-}" ]; then
   VERIFY_ARGS+=(--key "$ZARF_VERIFY_KEY")
 else
+  # The build and deploy jobs run in the same workflow execution, so
+  # AIRGAP_VERIFY_REF (github.ref, set by air-gapped.yml) always matches the
+  # ref that actually signed this run's package, whether that's main on a
+  # schedule or a branch on a manual workflow_dispatch test run.
   VERIFY_ARGS+=(
     --certificate-identity
-    'https://github.com/polarsquad/krops/.github/workflows/air-gapped.yml@refs/heads/main'
+    "https://github.com/polarsquad/krops/.github/workflows/air-gapped.yml@${AIRGAP_VERIFY_REF:-refs/heads/main}"
     --certificate-oidc-issuer
     'https://token.actions.githubusercontent.com'
   )
@@ -135,6 +139,27 @@ if ( cd "$AIRGAP_DIR" && "$ZARF" package deploy "$PACKAGE" --confirm ); then
   pass "zarf package deploy"
 else
   fail "zarf package deploy"
+  # See docs/airgap.md#empirical-findings-why-the-package-looks-the-way-it-does
+  # (finding 7) for why this capture exists.
+  {
+    echo "===== cert-manager namespace: pods ====="
+    "$KUBECTL" --context "$MGMT_CTX" get pods -n cert-manager -o wide
+    echo
+    echo "===== cert-manager namespace: describe pods ====="
+    "$KUBECTL" --context "$MGMT_CTX" describe pods -n cert-manager
+    echo
+    echo "===== cert-manager namespace: pod logs ====="
+    for pod in $("$KUBECTL" --context "$MGMT_CTX" get pods -n cert-manager -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+      echo "--- $pod ---"
+      "$KUBECTL" --context "$MGMT_CTX" logs -n cert-manager "$pod" --all-containers --tail=200
+    done
+    echo
+    echo "===== cluster-wide events (by time) ====="
+    "$KUBECTL" --context "$MGMT_CTX" get events -A --sort-by=.lastTimestamp
+    echo
+    echo "===== node status/capacity ====="
+    "$KUBECTL" --context "$MGMT_CTX" describe nodes
+  } > /tmp/airgap-cert-manager-debug.txt 2>&1
   exit 1
 fi
 

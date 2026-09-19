@@ -77,8 +77,12 @@ CONTAINER_ENGINE=podman TOOLBOX_IMAGE="$TOOLBOX_IMAGE" \
 ```
 
 The same wrapper powers `mise run bootstrap`, `mise run pivot`, and
-`mise run teardown`. It detects the engine, loads every `.env` assignment with
-outer quote stripping, and passes only this allowlist into the container:
+`mise run teardown`. It loads every `.env` assignment with outer quote
+stripping before detecting the engine or resolving a socket for it, so a
+`.env`-selected `CONTAINER_ENGINE` takes effect from the start (issue #257).
+An already-exported variable is left alone, so process environment wins over
+`.env`, matching mise's own `env_file` precedence. It then passes only this
+allowlist into the container:
 
 - Engine and lifecycle: `CONTAINER_ENGINE`, `ENGINE_SOCK`, `KROPS_PROFILE`,
   `REGISTRY_PORT`, `OCI_REPOSITORY`, `OCI_TAG`, `BOOTSTRAP_PIVOT`,
@@ -87,6 +91,14 @@ outer quote stripping, and passes only this allowlist into the container:
   `AGE_PUBLIC_KEY`
 - AWS: `AWS_REGION`, `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`,
   `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`
+
+`CLOUDSDK_CONFIG` is forwarded twice: once through the GCP allowlist entry
+(an operator-set value, if any), then again as an explicit `-e
+CLOUDSDK_CONFIG=/workspace/.gcloud` appended after it. The container engine
+takes the last value for a repeated `-e` key, so the explicit one wins by
+design: the toolbox always uses the repo-local `.gcloud/` directory (inside
+the `/workspace` mount), shared with the host `mise -E gcp` session, never an
+operator override. Keep the two in sync if the mount path ever changes.
 
 It does not pass `BOOTSTRAP_CONFIG`, `REGISTRY_READY_RETRIES`,
 `LOCAL_RECONCILE_TIMEOUT`, `MGMT_KUBECONFIG`, `MGMT_READY_TIMEOUT`,
@@ -98,11 +110,13 @@ not require host mise.
 
 Inside the toolbox:
 
-- The entrypoint sets `KROPS_TOOLBOX=1` and resolves the daemon-side
-  `ENGINE_SOCK` used by kind's socket mount.
-- Each new toolbox container best-effort joins an existing `kind` network at
-  startup. Bootstrap joins explicitly after creating kind; recreate, pivot, and
-  teardown detach before deleting the bootstrap cluster.
+- The entrypoint sets `KROPS_TOOLBOX=1` and execs `krops-bootstrap`, which
+  owns engine detection, the daemon-side `ENGINE_SOCK` used by kind's socket
+  mount, and kind-network attach/detach (issue #256).
+- Bootstrap joins the `kind` network explicitly after creating (or reusing)
+  the cluster; recreate, pivot, and teardown detach before deleting the
+  bootstrap cluster; teardown re-joins first if it needs the internal API
+  endpoint.
 - Kind's internal API endpoint and `krops-registry:5000` then resolve by name.
 - Host-only CAPD endpoint rewrites are skipped because the recorded endpoints
   already resolve on that network.

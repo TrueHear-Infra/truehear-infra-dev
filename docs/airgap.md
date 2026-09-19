@@ -44,6 +44,18 @@ files.
 The locally built `localhost:5001/krops-airgap:latest` config artifact is the
 only documented exception because it is created immediately before packaging.
 
+The digest must be exactly 64 hex characters; `airgap/tests/test-digest-regex.py`
+regression-tests that boundary in both directions (63 and 65 characters) and
+in both reference forms (`name:tag@sha256:...` and the tag-less
+`name@sha256:...`). This offline check only confirms a digest is
+*shaped* correctly, not that it exists. `airgap/tests/test-airgap-image-existence.py`
+covers that: it queries each shape-valid pin's registry with `docker buildx
+imagetools inspect` to confirm the manifest is real and pullable, catching a
+well-formed but wrong digest. It only runs against pins that already parse as
+shape-valid (a malformed digest is never queried), and needs registry
+network access, so it runs as its own CI job rather than in `mise run
+validate`.
+
 ### Image pin ownership
 
 `zarf.yaml` is the authoritative artifact listing for the bundle: every image
@@ -236,6 +248,16 @@ daemon): `CLUSTER_NAME`, `AIRGAP_CLUSTER_NAME`, `WORKLOAD_REGISTRY_HOST`,
    mechanism keeping them in sync with the digest pins Renovate manages in
    `zarf.yaml` — see issue #80's investigation for how that drifted a whole
    CAPI minor version out of sync undetected.
+   The `capi-core` component stages the `clusterctl` binaries,
+   `clusterctl-providers.yaml`, and `scripts/resolve-clusterctl.sh` once;
+   `capi-providers` and `caaph` reuse them from `/tmp/krops-airgap` since
+   they run later in the same deploy. All three components' deploy actions
+   source `resolve-clusterctl.sh` rather than repeating its arch-detection
+   and executable check inline (issue #354: a third copy of that block was
+   the point a shared script paid off). The bundled `clusterctl` release
+   itself versions independently of the providers it renders — it does not
+   need to track their version, and pinning it separately is intentional,
+   not a stale pin.
 2. **`spec.distribution.artifact` must be omitted** from the FluxInstance.
    The operator fetches it at every reconcile and its fetcher has no
    insecure-registry option (verified: "http: server gave HTTP response to
@@ -260,6 +282,13 @@ daemon): `CLUSTER_NAME`, `AIRGAP_CLUSTER_NAME`, `WORKLOAD_REGISTRY_HOST`,
 6. **Workload-node k8s images are pre-baked** into `kindest/node` (verified:
    136 content blobs), so CAPD nodes come up offline with no pulls. Only the
    workload Flux controllers and podinfo need `preLoadImages`.
+7. **`zarf package deploy`'s Helm `--wait` prints no progress**, so a hang
+   inside it (issue #322: cert-manager's install ran out its 15-minute
+   timeout) gives no clue what got stuck by itself. `offline-run.sh` dumps
+   cert-manager's pods, pod descriptions, pod logs, cluster-wide events, and
+   node status to `/tmp/airgap-cert-manager-debug.txt` when that step fails,
+   while the kind cluster is still up on the runner, uploaded alongside the
+   deployment evidence.
 
 ## Known limitations / follow-ups
 

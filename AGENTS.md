@@ -105,7 +105,9 @@ resources. There is no app source code here, only declarative infrastructure.
   the same pins); `airgap/tests/test-airgap-ownership.py` (in `mise run
   validate` and CI) enforces that every `zarf.yaml` image appears in
   `images.txt` with the identical tag and digest, guarding against partial
-  air-gap updates (issue #228). `scripts/` builds,
+  air-gap updates (issue #228); the CI-only
+  `airgap/tests/test-airgap-kubeadm-images.py` checks the k8s component pins in
+  `images.txt` against real `kubeadm config images list`. `scripts/` builds,
   renders, and stages the bundle (`build-*`, `render-*`, `stage-*`,
   `offline-run.sh`); `archives/` and `rendered/` are gitignored outputs.
   Zarf fetches SHA-256-pinned CAAPH release assets and bundles arm64
@@ -260,6 +262,13 @@ engine, checking that only action dependencies join the GitHub Actions group.
 Run locally with Renovate on PATH and Node >= 24.11. These tests
 do not cover lookup liveness or the replacement path; only the
 dry-run and the handlebars simulation cover those.
+
+The digest-pinning, coverage, and release-assets tests all run sequentially
+in the same CI job and their fixtures overlap on `airgap/zarf.yaml`'s
+`kubernetes-sigs/cluster-api*` depNames, so the harness points every run at
+a shared `RENOVATE_CACHE_DIR` (defaulting to a fixed path under the OS temp
+dir): repeat datasource lookups hit Renovate's on-disk cache instead of the
+GitHub API again.
 
 The offline `airgap/tests/test-airgap-image-digests.py` gate is separate from
 Renovate: it scans air-gap inventories and scripts changed by the PR, requires

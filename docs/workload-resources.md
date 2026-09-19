@@ -44,9 +44,11 @@ authenticates).
 `workload/gcp-base/storage/bucket.yaml` creates one bucket per cluster
 (`krops-<project-number>-<cluster>-data`) with the same posture as the S3
 bucket: uniform bucket-level access on (no object ACLs), versioning on,
-no public access.
+no public access. GCS caps bucket names at 63 characters; the identity chain
+test checks the name against the real cluster name with a 19-digit project
+number.
 
-### Cloud SQL (private IP, IAM auth only)
+### Cloud SQL (private IP, IAM auth)
 
 `workload/gcp-base/postgres/postgres.yaml` creates one PostgreSQL 17
 instance per cluster (`krops-<cluster>-db`), zonal, with:
@@ -54,13 +56,19 @@ instance per cluster (`krops-<cluster>-db`), zonal, with:
 - private IP only (`ipv4Enabled: false`, no public address), the private IP
   reaching the workload VPC through the Private Service Access range and
   VPC peering in `workload/gcp-base/networking/`
-- `requireSsl: true` + `sslMode: ENCRYPTED_ONLY`
-- IAM authentication only (`cloudsql.iam_authentication: on`): the reader
-  user is the per-cluster reader service account, so no password exists
-  anywhere. AWS and Azure take the same posture by different mechanisms:
-  RDS uses `manageMasterUserPassword` (the password is generated and held
-  in Secrets Manager, not in Git or the cluster) and the Azure flexible
-  server sets `passwordAuth: Disabled` (Entra ID only)
+- `sslMode: ENCRYPTED_ONLY` (the deprecated `requireSsl` is not set)
+- `edition: ENTERPRISE`, set explicitly: the shared-core `db-f1-micro` tier
+  only exists on the Enterprise edition, and PostgreSQL 17 can otherwise
+  default to Enterprise Plus
+- IAM database authentication (`cloudsql.iam_authentication: on`): the reader
+  user is the per-cluster reader service account, and no `rootPassword` or
+  user password is set in Git or the cluster. The flag enables IAM login but
+  does not disable password login, and Cloud SQL has no instance-level switch
+  for that, so the built-in `postgres` user still exists; it has no password
+  set here and nothing in the repo uses it. The AWS and Azure counterparts
+  are stricter: RDS uses `manageMasterUserPassword` (the password is
+  generated and held in Secrets Manager) and the Azure flexible server sets
+  `passwordAuth: Disabled` (Entra ID only)
 
 Connection:
 
@@ -80,7 +88,7 @@ both the connect path and the impersonation.
 ### Per-cluster reader identity
 
 `workload/gcp-base/iam/reader.yaml` creates the per-cluster reader service
-account (`krops-<cluster>-r`; the accountId is capped at GCP's 30-char
+account (`krops-<cluster>-r`; the account ID, taken from the resource's `metadata.name`, is capped at GCP's 30-char
 service-account ID limit) with `storage.objectViewer` on the bucket and
 `cloudsql.instanceUser` on the project (the IAM database-auth login role,
 which carries `cloudsql.instances.login`), plus a
@@ -89,6 +97,13 @@ whose member is the project-level `krops-reader` GSA. The per-cluster GSA
 is also the Cloud SQL `SQLUser`, so the effective database identity is the
 per-cluster reader; the human path is human IAM account to `krops-reader`
 (imperative token-creator grant from gcp-bootstrap) to the per-cluster
-reader (the grant above). `tests/test-gcp-identity-chain.py` (in `mise run
+reader (the grant above). The project-level `roles/cloudsql.viewer` grant
+(read access to the instance in the console and API) sits alongside
+`cloudsql.instanceUser`. The account ID must fit 30 characters: for the
+22-character cluster name, `krops-<cluster>-r` is exactly 30, while
+`-reader` (35) and `-rd` (31) do not fit, and the identity chain test fails
+on a longer cluster name instead of the GCP API. The `iam` Kustomization
+depends on `storage` (the bucket the viewer grant references) and `postgres`
+(the SQLUser the `instanceUser` grant serves). `tests/test-gcp-identity-chain.py` (in `mise run
 validate` and CI) cross-checks the identity couplings between these and
 `mgmt/gcp/`.
