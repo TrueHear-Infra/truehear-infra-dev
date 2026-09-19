@@ -24,10 +24,11 @@ pinned tools required by the lifecycle. See [Operations](./operations.md) for
 the container invocation and host runtime contract.
 
 The `toolbox-release` workflow runs on `v*` tags. It requires the tag to match
-`bootstrap-rs/Cargo.toml`, builds Linux amd64 and arm64 images, publishes
-`X.Y.Z`, `X.Y`, and stable `latest` tags, signs the image with GitHub OIDC, and
-attaches a Syft SPDX JSON SBOM attestation. The `bootstrap-rs` CI workflow also
-builds and smokes the arm64 image when its inputs change.
+`bootstrap-rs/Cargo.toml`, builds Linux amd64 and arm64 images natively on
+their own architecture (not under QEMU emulation), publishes `X.Y.Z`, `X.Y`,
+and stable `latest` tags, signs the image with GitHub OIDC, and attaches a
+Syft SPDX JSON SBOM attestation. The `bootstrap-rs` CI workflow also builds
+and smokes the arm64 image when its inputs change.
 
 Published releases carry the stable tags described above; build the current
 checkout as shown in [Operations](./operations.md) only for unreleased
@@ -264,7 +265,8 @@ does not select a separate CLI subcommand.
 The three shell scripts remain as native reference and fallback paths until
 full parity runs pass for all environments. Local-host bootstrap, pivot, and
 post-pivot teardown have completed parity runs. AWS full-parity runs still gate
-script retirement. The local-talos environment has not run end to end yet;
-its acceptance run waits on operator Tinkerbell hardware (issue #105). At
-this revision no semver tag has run the release workflow,
-and no Podman-host acceptance run is recorded.
+script retirement. The local-talos environment has completed its hardware
+acceptance run (issue #105, closed) through the CLI; the documented
+PXE/Tinkerbell-Workflow provisioning transport still needs a run (issue #225).
+Toolbox releases are published (see above); no Podman-host acceptance run is
+recorded.

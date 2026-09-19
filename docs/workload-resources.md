@@ -34,7 +34,7 @@ RDS controller runs with `aws.region: ${AWS_REGION}`:
 
 ## GCP resources (GKE workload cluster)
 
-On the GKE workload cluster, Config Connector (KCC, PR 2) creates the
+On the GKE workload cluster, Config Connector (KCC) creates the
 counterparts from `workload/gcp-base/`; the management cluster's KCC is
 the authoring identity (see [GCP environment](./gcp.md) for how it
 authenticates).

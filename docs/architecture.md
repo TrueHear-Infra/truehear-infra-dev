@@ -512,10 +512,13 @@ podinfo (HelmRelease reconciled by local workload Flux from OCI artifact)
 
 The `local-talos` environment targets physical bare metal: a disposable kind
 cluster installs CAPI with the Tinkerbell infrastructure provider (CAPT pinned
-to fork v0.7.1) and Talos bootstrap/control-plane providers (CABPT v0.7.8,
-CACPPT v0.6.5). The controllers match a committed Tinkerbell Hardware object
-(`talos-mgmt-01`), PXE-boot the target machine, write the Talos installer
-image to disk, and bring up an immutable single-node control plane.
+to fork v0.7.1) and Talos bootstrap/control-plane providers (CABPT v0.8.2,
+CACPPT v0.7.1). The controllers match a committed Tinkerbell Hardware object
+(`talos-mgmt-01`), PXE-boot the target machine, and bring up an immutable
+single-node control plane. The installer image is declared on the
+`TalosConfig` through `spec.imageFactory` (resolved by CABPT v0.8.x against
+the Image Factory API); the committed definition declares no block, so no
+installer-image override is rendered.
 
 Scope fence: `local-talos` is management-only. It owns no workload clusters and
 deploys no CAPI addons (Talos ships its own internal CNI). Teardown deletes the
@@ -548,8 +551,8 @@ flowchart TD
         CO[capi-operator]
         CAPIS[capi-system]
         CAPT["capt-system (Tinkerbell CAPT v0.7.1 fork)"]
-        CABPT["cabpt-system (Talos bootstrap v0.7.8)"]
-        CACPPT["cacppt-system (Talos control plane v0.6.5)"]
+        CABPT["cabpt-system (Talos bootstrap v0.8.2)"]
+        CACPPT["cacppt-system (Talos control plane v0.7.1)"]
         TALOSMGMT["clusters/management<br/>talos-mgmt-01 (explicit controlPlaneRef)"]
 
         FS --> CM --> CO --> CAPIS
