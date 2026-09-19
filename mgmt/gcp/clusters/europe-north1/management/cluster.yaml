@@ -64,7 +64,7 @@ metadata:
   namespace: default
 spec:
   clusterName: management
-  replicas: 2
+  replicas: 3
   template:
     spec:
       clusterName: management

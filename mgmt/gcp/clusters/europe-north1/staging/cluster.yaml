@@ -64,7 +64,7 @@ metadata:
   namespace: default
 spec:
   clusterName: workload
-  replicas: 1
+  replicas: 2
   template:
     spec:
       clusterName: workload
