@@ -75,6 +75,7 @@ nav:
   - Bootstrap CLI: bootstrap-cli.md
   - Extending: extending.md
   - Secrets: secrets.md
+  - AWS environment: aws.md
   - Azure environment: azure.md
   - GCP environment: gcp.md
   - AWS authentication and IAM: aws-iam.md

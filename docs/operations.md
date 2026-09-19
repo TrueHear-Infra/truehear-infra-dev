@@ -10,11 +10,12 @@ intentionally omits development-only Go and Python toolchains and the Zarf CLI.
 The host needs the repository checkout and a running Docker engine or Podman
 5.5+.
 
-No semver release has been published yet. A future matching `v*` tag runs
-`.github/workflows/toolbox-release.yml`, which is configured to publish Linux
-amd64 and arm64 tags `X.Y.Z`, `X.Y`, and stable `latest`, sign the image with
-GitHub OIDC, and attach a Syft SPDX JSON SBOM attestation. Build the current
-checkout locally:
+The toolbox image is published to `ghcr.io/polarsquad/krops-toolbox` for
+Linux amd64 and arm64 as `X.Y.Z`, `X.Y`, and stable `latest`, signed with
+GitHub OIDC and carrying a Syft SPDX JSON SBOM attestation. The
+`toolbox-release` workflow publishes those tags from a matching `v*` tag.
+Use a published tag, or build the current checkout only for unreleased
+changes:
 
 ```sh
 docker build -f bootstrap-rs/Dockerfile -t krops-toolbox:dev .
@@ -214,26 +215,34 @@ You also need:
      IP; its name must match the `hardwareName` in
      `mgmt/local-talos/clusters/management/cluster.yaml` (`talos-mgmt-01`
      as checked in).
-  3. Annotate the `Hardware` CR with
-     `hardware.tinkerbell.org/installer-image: <image URL>` when the machine
-     needs a non-default Image Factory schematic (system extensions, custom
-     kernel args). The pinned CAPT fork mirrors the annotation into
-     `status.installerImage` and CABPT injects it as the Talos
-     `machine.install.image`; without the annotation the default schematic
-     is used.
+  3. Customize the installer image through `spec.imageFactory` on the
+     TalosConfig (declared under `controlPlaneConfig` in
+     `mgmt/local-talos/clusters/management/cluster.yaml`): the block mirrors
+     the Image Factory schematic (official system extensions, extra kernel
+     args, an SBC overlay, and the bootloader). CABPT v0.8.x resolves the
+     block against the Image Factory API and renders
+     `machine.install.image`; a bare minor `talosVersion` (the committed
+     `v1.14`) resolves to the newest non-prerelease patch the Factory serves.
+     The committed definition declares no `imageFactory` block, so CABPT
+     renders no installer-image override. The earlier mechanism, the
+     `hardware.tinkerbell.org/installer-image` Hardware annotation mirrored
+     into `status.installerImage` by the CAPT fork, is no longer read by
+     CABPT v0.8.x.
   4. Set the machine to PXE-boot from the network Smee serves.
 
-     **Installer image handoff status:** on the current pin pair (CABPT v0.7.8
-     + CAPT fork v0.7.1) the annotation handoff above is unverified and not
-     functional: CABPT v0.7.8 reads the installer image through a hardcoded
-     v1beta2 InfrastructureMachine GVK, while the CAPT fork's TinkerbellMachine
-     CRD serves only v1beta1, so the lookup cannot succeed (issue #265).
-     CABPT v0.8.x changed the mechanism to `spec.imageFactory` (an Image
-     Factory HTTP API call), so bumping CABPT is a behavior change, not a
-     version bump; fork retirement is tracked in issue #266 and is blocked on
-     upstream PR tinkerbell/cluster-api-provider-tinkerbell#604. Until the pins
-     move, verify the installer image the machine actually receives before
-     relying on the annotation.
+     **Installer image handoff status:** the CABPT pin moved to v0.8.2
+     (Renovate #295), which deleted the `status.installerImage` lookup and
+     moved the installer image to `spec.imageFactory`. The CAPT fork v0.7.1
+     still mirrors the Hardware annotation, but nothing consumes it on the
+     current pins, so the annotation path is a no-op. The `spec.imageFactory`
+     path has not been exercised live: the #105 hardware acceptance run
+     predates the CABPT bump, and the documented PXE/Tinkerbell-Workflow
+     path still needs a run (issue #225). Until that run, verify the image
+     the machine actually receives and do not treat the installer image as
+     Git-pinned. Fork retirement is tracked in issue #266, blocked on
+     upstream PR tinkerbell/cluster-api-provider-tinkerbell#604; with the
+     installer-image mirror no longer consumed, that PR is the fork's only
+     remaining differentiator.
 - Two site-specific values in
   `mgmt/local-talos/clusters/management/cluster.yaml` before the first run:
   `spec.controlPlaneEndpoint.host` (the machine's stable IP) and the
@@ -243,9 +252,11 @@ You also need:
 
 | Quota | Code | Needed | Why |
 |---|---|---|---|
-| EC2-VPC Elastic IPs (per region) | `L-0263D0A3` | ≥ 3 free | One EIP per NAT gateway (3 AZs) |
+| EC2-VPC Elastic IPs (per region) | `L-0263D0A3` | ≥ 6 free in `eu-north-1`, ≥ 3 free in `eu-west-1` | One EIP per NAT gateway (3 AZs): two clusters in `eu-north-1` (management + workload), one in `eu-west-1` |
 
-Request increases with
+The check is per region, and the default regional limit is 5, so a clean
+account stalls mid-run on the second `eu-north-1` cluster. Request the
+increase before the first run with
 `aws service-quotas request-service-quota-increase --service-code ec2 --quota-code <code> --desired-value <n> --region <region>`.
 
 ## Configuration
@@ -276,6 +287,8 @@ Runtime environment variables take precedence over configurable defaults, and
 mise run bootstrap                 # AWS environment (toolbox container via scripts/toolbox-run.sh)
 mise -E local-host run bootstrap   # local-host environment
 mise -E local-talos run bootstrap  # local-talos environment
+mise -E azure run bootstrap        # azure environment (after azure-bootstrap)
+mise -E gcp run bootstrap          # gcp environment (after gcp-bootstrap)
 ```
 
 Azure: see [azure.md](./azure.md) for the subscription prep step that
@@ -285,6 +298,14 @@ and the `krops-capz` / `krops-aso` user-assigned identities with their role
 grants; nothing it prints is secret). After the kind cluster is created,
 bootstrap-rs runs the `arc-federate` mise task, which Arc-connects kind with
 an OIDC issuer for CAPZ/ASO workload identity (issue #236).
+
+GCP: see [gcp.md](./gcp.md) for the project prep step that precedes
+`mise -E gcp run bootstrap` (`gcp-bootstrap` enables the APIs and creates the
+`krops-capg` / `krops-kcc` / `krops-reader` service accounts and the `krops`
+workload identity pool; nothing it prints is secret). After the kind cluster
+is created, bootstrap-rs runs the `wif-federate` mise task, which registers
+the kind cluster's OIDC provider and the impersonation bindings for CAPG and
+Config Connector.
 
 > Before the first AWS bootstrap, generate an age key for SOPS. See
 > [Secret management](./secrets.md) for native and toolbox-only setup.

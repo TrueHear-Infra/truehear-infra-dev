@@ -69,9 +69,9 @@
   <rect x="88" y="334" width="452" height="130" rx="10" fill="#5CE0B4" fill-opacity="0.12" stroke="#5CE0B4" stroke-opacity="0.5" stroke-width="1.2"/>
   <text x="314" y="358" text-anchor="middle" font-family="DejaVu Sans" font-size="16" font-weight="bold" fill="#5CE0B4">Installed CAPI providers (mgmt/local-talos/)</text>
   <text x="106" y="382" font-family="DejaVu Sans Mono" font-size="13.5" fill="#D4E2DA">&#8226; <tspan fill="#FFFFFF">capt-system:</tspan> Tinkerbell CAPT v0.7.1 (fork)</text>
-  <text x="106" y="404" font-family="DejaVu Sans Mono" font-size="13.5" fill="#D4E2DA">&#8226; <tspan fill="#FFFFFF">cabpt-system:</tspan> Talos bootstrap provider (v0.7.8)</text>
-  <text x="106" y="426" font-family="DejaVu Sans Mono" font-size="13.5" fill="#D4E2DA">&#8226; <tspan fill="#FFFFFF">cacppt-system:</tspan> Talos control plane (v0.6.5)</text>
-  <text x="106" y="448" font-family="DejaVu Sans Mono" font-size="13.5" fill="#859D91">&#8226; <tspan fill="#D4E2DA">capi-system:</tspan> CAPI core operator (v1.14.1)</text>
+  <text x="106" y="404" font-family="DejaVu Sans Mono" font-size="13.5" fill="#D4E2DA">&#8226; <tspan fill="#FFFFFF">cabpt-system:</tspan> Talos bootstrap provider (v0.8.2)</text>
+  <text x="106" y="426" font-family="DejaVu Sans Mono" font-size="13.5" fill="#D4E2DA">&#8226; <tspan fill="#FFFFFF">cacppt-system:</tspan> Talos control plane (v0.7.1)</text>
+  <text x="106" y="448" font-family="DejaVu Sans Mono" font-size="13.5" fill="#859D91">&#8226; <tspan fill="#D4E2DA">capi-system:</tspan> CAPI core operator (v1.14.2)</text>
 
   <!-- ===== git repository ===== -->
   <rect x="648" y="150" width="372" height="330" rx="14" fill="#131E18" stroke="#284637" stroke-width="1.5"/>

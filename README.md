@@ -20,9 +20,10 @@ platform APIs. krops introduces no krops-specific CRD or controller: it combines
 for GitOps. If those resource APIs already say what you mean, krops does not
 wrap them to say it again.
 
-This repository demonstrates the pattern end to end on AWS EKS, local Docker
-clusters, and a Tinkerbell-provisioned [Talos Linux](https://www.talos.dev/)
-machine. A disposable [kind](https://kind.sigs.k8s.io/) cluster bootstraps Flux,
+This repository demonstrates the pattern end to end on AWS EKS, Azure AKS,
+Google GKE, local Docker clusters, and a Tinkerbell-provisioned
+[Talos Linux](https://www.talos.dev/) machine. A disposable
+[kind](https://kind.sigs.k8s.io/) cluster bootstraps Flux,
 CAPI pivots control to a self-managed management cluster, and the Rust
 [`krops-bootstrap`](docs/bootstrap-cli.md) CLI handles bootstrap, pivot, and
 teardown. After that, everything is declared in Git, with a
@@ -60,15 +61,7 @@ not a developer self-service portal; you are the consumer.
 
 ![krops aws architecture](docs/aws-infra.svg)
 
-![krops azure architecture](docs/azure-infra.svg)
-
-![krops gcp architecture](docs/gcp-infra.svg)
-
-![krops local-host architecture](docs/local-host-infra.svg)
-
-![krops local-talos architecture](docs/local-talos-infra.svg)
-
-![krops air-gap architecture](docs/air-gap-infra.svg)
+The other environments' diagrams are linked from their [Environments](#environments) sections below.
 
 ## Prerequisites
 
@@ -151,21 +144,113 @@ in their native consumer files and update PRs open weekly. See
 
 ### Environments
 
-The shared toolchain is defined in `mise.toml`. AWS-specific tools are layered
-through `mise.aws.toml`; use the `aws` environment when those tools are
-needed. The `local-host` environment creates the management kind cluster, a
-local OCI registry, and the Flux Operator and FluxInstance. It publishes the
-`mgmt/local-host/` and `workload/local-host/` folders as the `krops:latest`
-OCI artifact. Flux installs CAPI with its Docker infrastructure provider (CAPD),
-provisions a local one-control-plane/one-worker workload cluster, and installs
-a separate Flux instance there. That workload Flux instance reconciles Podinfo,
-providing an end-to-end local path from management-cluster bootstrap through
-workload delivery and application access. This covers the complete GitOps and
-CAPI lifecycle without provisioning AWS resources:
+Five management environments share one shape: a disposable kind bootstrap
+cluster runs Flux, a CAPI infrastructure provider builds the self-managed
+management cluster, the pivot moves the management objects into it, and the
+management cluster then reconciles itself and its workload clusters from this
+repository. The shared toolchain is defined in `mise.toml`; each environment
+layers its own tools and tasks in a `mise.<env>.toml`.
+
+| Environment | Management cluster | CAPI provider | Workload operator | Config sync |
+|---|---|---|---|---|
+| `aws` | EKS `eu-north-1-management` | CAPA | ACK (S3, RDS, IAM) | GitHub |
+| `azure` | AKS `swedencentral-management` | CAPZ (bundles ASO) | Azure Service Operator | GitHub |
+| `gcp` | GKE `europe-north1-management` | CAPG | Config Connector | GitHub |
+| `local-host` | CAPD `local-management` (Docker) | CAPD | Flux + Podinfo | local OCI registry |
+| `local-talos` | single-node Talos on bare metal | CAPT + CABPT + CACPPT | none (management-only) | GitHub |
+
+Each environment has its own reference page; the ones below summarize it and
+link to the full guide.
+
+#### AWS
+
+The reference environment. CAPA provisions an EKS management cluster in
+`eu-north-1` plus workload EKS clusters in `eu-north-1` and `eu-west-1`; each
+workload cluster runs the ACK S3, RDS, and IAM operators, authenticated with
+EKS Pod Identity (no static keys on workload clusters). Credentials are a
+SOPS-encrypted CAPA profile in Git plus per-controller IAM roles created
+declaratively by the management cluster. It needs a GitHub PAT, an age key,
+AWS credentials, and the `clusterawsadm` CloudFormation stack.
+
+![krops aws architecture](docs/aws-infra.svg)
 
 ```sh
-docker build -f bootstrap-rs/Dockerfile -t krops-toolbox:dev .
-export TOOLBOX_IMAGE=krops-toolbox:dev
+mise -E aws install            # adds aws-cli, clusterawsadm
+mise -E aws run aws-bootstrap  # once: clusterawsadm IAM CloudFormation stack
+mise run sops-keygen           # first time only: age key for SOPS
+mise run bootstrap             # kind + Flux + CAPA; then pivot
+mise run mgmt-kubeconfig       # ~/.kube/krops-mgmt.yaml
+mise -E aws run kubeconfigs    # workload kubeconfigs per region
+mise run teardown              # full AWS + EKS + kind cleanup
+```
+
+Full guide: [AWS environment](docs/aws.md) (clusters, credentials, commit the
+identifiers, reconciliation order, upgrades, known limitations). IAM and
+per-cluster reader roles: [AWS authentication & IAM](docs/aws-iam.md). S3/RDS
+posture: [Workload resources](docs/workload-resources.md).
+
+#### Azure
+
+CAPZ v1.27.0 provisions an AKS management cluster in `swedencentral` plus a
+workload AKS cluster; each workload cluster runs its own Azure Service
+Operator (ASO) reconciling Azure resources from `workload/azure-base/`. No
+Azure secret exists at rest: CAPZ and the bundled ASO authenticate with
+workload identity against the `krops-capz` user-assigned identity, and the
+workload ASO authenticates through a federated credential. It needs a GitHub
+PAT, an age key, and a subscription where you hold Owner.
+
+![krops azure architecture](docs/azure-infra.svg)
+
+```sh
+mise -E azure install            # adds az
+mise -E azure run azure-bootstrap  # once: providers, resource group, identities
+mise -E azure run bootstrap        # kind + Flux + CAPZ; then pivot
+mise run mgmt-kubeconfig
+mise -E azure run kubeconfigs
+```
+
+Full guide: [Azure environment](docs/azure.md). Teardown is manual for now;
+the CLI prints the steps.
+
+#### GCP
+
+CAPG v1.13.1 provisions a GKE management cluster in `europe-north1` plus a
+workload GKE cluster; the workload cluster runs its own Config Connector (KCC)
+reconciling GCP resources from `workload/gcp-base/`. No GCP secret exists at
+rest: CAPG and the management-side Config Connector authenticate with
+Workload Identity Federation against the `krops` pool (no service-account
+keys), and the workload cluster uses GKE-native Workload Identity. It needs a
+GitHub PAT, an age key, and a project with a billing account where you hold
+Owner.
+
+![krops gcp architecture](docs/gcp-infra.svg)
+
+```sh
+mise -E gcp install              # adds gcloud
+mise -E gcp run gcp-bootstrap    # once: APIs, service accounts, WIF pool
+mise -E gcp run bootstrap        # kind + Flux + CAPG; then pivot
+mise run mgmt-kubeconfig
+mise -E gcp run kubeconfigs
+```
+
+Full guide: [GCP environment](docs/gcp.md). Teardown is manual for now; the
+CLI prints the steps.
+
+#### Local host
+
+The end-to-end local environment: no cloud at all. It creates the management
+kind cluster, a local OCI registry, and the Flux Operator and FluxInstance. It
+publishes the `mgmt/local-host/` and `workload/local-host/` folders as the
+`krops:latest` OCI artifact, and Flux syncs from that artifact (not GitHub).
+Flux installs CAPI with its Docker provider (CAPD), provisions a
+one-control-plane/one-worker workload cluster, and installs a separate Flux
+instance there. That workload Flux instance reconciles Podinfo, giving a
+complete local path from management bootstrap through workload delivery and
+application access, with no GitHub or AWS credentials.
+
+![krops local-host architecture](docs/local-host-infra.svg)
+
+```sh
 mise -E local-host install
 mise -E local-host run bootstrap
 export KUBECONFIG="$PWD/.kube/krops-mgmt.yaml"
@@ -175,28 +260,26 @@ mise -E local-host run podinfo-port-forward  # http://localhost:9898
 mise -E local-host run teardown
 ```
 
-The Flux charts are pulled anonymously. The AWS environment requires a
-GitHub PAT so Flux can clone this repository; the local-host environment does
-not require GitHub or AWS credentials.
-
 `mise -E local-host run bootstrap` waits for both the management and workload
-Flux reconciliation chains and surfaces workload reconciliation errors. A
-successful bootstrap, followed by the Podinfo port-forward, verifies the
-end-to-end local-host flow.
+Flux reconciliation chains and surfaces workload errors; a successful
+bootstrap plus the Podinfo port-forward verifies the end-to-end flow.
+Teardown deletes the CAPD workload cluster first, then the pre-pivot kind
+cluster or the post-pivot self-managed management containers, and removes the
+local registry last.
 
-Local-host teardown deletes the CAPD workload cluster first, then removes the
-pre-pivot kind cluster or the post-pivot self-managed management containers,
-and removes the local registry last. AWS teardown discovers the active
-controller host, deletes the workload clusters, sweeps orphaned resources in
-both workload regions plus the self-managed management cluster, and removes
-the `clusterawsadm` CloudFormation stack.
+#### Local Talos
 
-The `local-talos` environment targets a physical machine through Tinkerbell:
-a PXE install of Talos Linux, then the same bootstrap, pivot, and
-self-management flow, synced from GitHub. It needs the GitHub PAT and age
-key, a reachable Tinkerbell stack with a `Hardware` resource for the
+Targets a physical machine through Tinkerbell: a PXE install of Talos Linux,
+then the same bootstrap, pivot, and self-management flow, synced from GitHub.
+Scope fence: management-only, no workload clusters. It needs the GitHub PAT
+and age key, a reachable Tinkerbell stack with a `Hardware` resource for the
 machine, and the site values in
-`mgmt/local-talos/clusters/management/cluster.yaml`:
+`mgmt/local-talos/clusters/management/cluster.yaml`. The hardware acceptance
+run (issue #105) has been executed end to end on operator-owned hardware; the
+documented PXE/Tinkerbell-Workflow provisioning transport still needs a live
+run (issue #225).
+
+![krops local-talos architecture](docs/local-talos-infra.svg)
 
 ```sh
 mise -E local-talos install  # adds talosctl
@@ -206,26 +289,16 @@ mise -E local-talos run kubeconfigs
 mise -E local-talos run teardown  # releases the Hardware; never wipes the machine
 ```
 
-The `azure` environment builds an AKS management cluster with CAPZ and
-manages Azure resources with Azure Service Operator on the workload
-clusters; see [docs/azure.md](docs/azure.md):
+#### Air-gapped local host
 
-```sh
-mise -E azure install            # adds az
-mise -E azure run azure-bootstrap
-mise -E azure run bootstrap
-```
+The `local-host` profile packaged with [Zarf](https://zarf.dev) for
+completely disconnected deployments: a connected build machine renders the
+GitOps tree, pulls the images and charts, signs the package, and a
+disconnected deploy host runs it with zero external traffic. Validated with
+the radio off. See [Air-gapped krops](docs/airgap.md) for build, offline
+deploy, and the update drill.
 
-The `gcp` environment builds a GKE management cluster with CAPG and
-manages GCP resources with Config Connector on the workload cluster, using
-Workload Identity Federation instead of keys; see
-[docs/gcp.md](docs/gcp.md):
-
-```sh
-mise -E gcp install              # adds gcloud
-mise -E gcp run gcp-bootstrap
-mise -E gcp run bootstrap
-```
+![krops air-gap architecture](docs/air-gap-infra.svg)
 
 ## The bootstrap CLI
 
@@ -250,6 +323,7 @@ teardown controls, toolbox release, and current parity status.
 | [docs/bootstrap-cli.md](docs/bootstrap-cli.md) | The `krops-bootstrap` lifecycle CLI: toolbox distribution, interface, `bootstrap.toml`, pivot, teardown, parity status |
 | [docs/dependencies.md](docs/dependencies.md) | Renovate-managed dependency updates: covered surfaces, update procedure, intentional differences |
 | [docs/architecture.md](docs/architecture.md) | Architecture diagram, reconciliation order, how workload apps are delivered |
+| [docs/aws.md](docs/aws.md) | AWS environment: clusters, credentials, identifiers, reconciliation order, upgrades, known limitations |
 | [docs/aws-iam.md](docs/aws-iam.md) | EKS Pod Identity, ACK controller IAM roles, per-cluster reader roles, the `krops-reader` console user |
 | [docs/workload-resources.md](docs/workload-resources.md) | S3 bucket security posture, RDS instances, known limitations |
 | [docs/konflate.md](docs/konflate.md) | Rendered Flux PR review: GitHub Actions gate, in-cluster instance, write-back to PRs, tokens |
@@ -306,14 +380,21 @@ teardown controls, toolbox release, and current parity status.
 │   │                              capt-system (Tinkerbell)
 │   └── clusters/                 management (self-managed)
 ├── mgmt/azure/                    AKS management cluster (CAPZ + ASO)
+├── mgmt/gcp/                      GKE management cluster (CAPG + Config
+│   │                              Connector operator + WIF identities)
 └── workload/                     Synced by each WORKLOAD cluster's Flux
     ├── base/                     ACK S3/RDS/IAM controllers, Bucket CRs,
     │                              DBInstance CRs, reader Role CRs
     ├── azure-base/               cert-manager, ASO, and the Azure workload
     │                              resources (VNet, storage, PostgreSQL)
+    ├── gcp-base/                 KCC operator + ConfigConnector, PSA range,
+    │                              storage bucket, Cloud SQL, per-cluster
+    │                              reader GSA
     ├── local-host/               OCI-synced Podinfo workload overlay
     ├── eu-north-01/              Per-cluster overlay (sync target)
-    └── eu-west-01/               Per-cluster overlay (sync target)
+    ├── eu-west-01/               Per-cluster overlay (sync target)
+    ├── swedencentral-01/         Per-cluster overlay -> azure-base
+    └── europe-north1-01/         Per-cluster overlay -> gcp-base
 ```
 
 ## License

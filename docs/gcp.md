@@ -3,7 +3,7 @@
 The `gcp` environment mirrors `azure`: a kind bootstrap cluster runs Flux,
 CAPG builds a GKE management cluster, the pivot moves the management objects
 into it, and the GKE workload cluster runs its own Config Connector (KCC)
-that reconciles GCP resources from `workload/gcp-base/` (PR 2).
+that reconciles GCP resources from `workload/gcp-base/`.
 
 | AWS (`aws`) | Azure (`azure`) | GCP (`gcp`) |
 |---|---|---|
@@ -123,7 +123,7 @@ Kustomizations substitute from `gcp-vars` plus the optional `gcp-wif`
 ConfigMap, so their first reconcile on a fresh source can fail once and
 succeeds on the 2-minute retry.
 
-Workload cluster (PR 2): kcc-operator (the operator, waited on; the pinned
+Workload cluster: kcc-operator (the operator, waited on; the pinned
 bundle ships its own webhook certs, so no cert-manager), kcc (the
 cluster-mode ConfigConnector), then networking (Private Service Access),
 storage (bucket), postgres (Cloud SQL, depends on networking) and iam
