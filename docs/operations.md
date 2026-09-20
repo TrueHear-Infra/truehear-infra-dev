@@ -253,11 +253,23 @@ You also need:
 | Quota | Code | Needed | Why |
 |---|---|---|---|
 | EC2-VPC Elastic IPs (per region) | `L-0263D0A3` | ≥ 6 free in `eu-north-1`, ≥ 3 free in `eu-west-1` | One EIP per NAT gateway (3 AZs): two clusters in `eu-north-1` (management + workload), one in `eu-west-1` |
+| VPCs per region | `L-F678F1CE` | 8 in `eu-north-1` (increase requested; default 5) | One VPC per cluster plus pre-existing non-krops VPCs. e2e account 120392301094: `eu-north-1` full at 5/5 (increase to 8 pending), `eu-west-1` at 3/5 (headroom 2) |
 
 The check is per region, and the default regional limit is 5, so a clean
 account stalls mid-run on the second `eu-north-1` cluster. Request the
 increase before the first run with
-`aws service-quotas request-service-quota-increase --service-code ec2 --quota-code <code> --desired-value <n> --region <region>`.
+`aws service-quotas request-service-quota-increase --service-code ec2 --quota-code <code> --desired-value <n> --region <region>`
+(for VPCs use `--service-code vpc`).
+
+### E2E account budget
+
+The e2e AWS account 120392301094 carries a monthly cost budget
+`krops-e2e-monthly` with a $200 ceiling. Notifications publish to the SNS
+topic `krops-e2e-budget-alerts` (us-east-1) at 80% forecasted and 100%
+actual spend, and the topic's email subscription delivers them to
+joseph.shriner@polarsquad.com, the escalation path for budget alerts. The
+email subscription only activates after the SNS confirmation email is
+accepted.
 
 ## Configuration
 
