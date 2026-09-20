@@ -13,7 +13,8 @@ resources. There is no app source code here, only declarative infrastructure.
 
 - `mgmt/aws/`: synced by the MANAGEMENT cluster's Flux.
   - `infrastructure/`: cert-manager, CAPI operator, CAPA identity, ACK
-    controllers, pod-identity roles, account-global IAM, konflate.
+    controllers (S3, RDS, IAM), the per-cluster Bucket/DBInstance/reader
+    Role CRs (`workload-resources/`), account-global IAM, konflate.
   - `capi-providers/`: capi-system, capa-system, caaph-system.
   - `addons/flux-apps/`: installs Flux on each workload cluster
     (HelmChartProxy + ClusterResourceSets).
@@ -84,7 +85,10 @@ resources. There is no app source code here, only declarative infrastructure.
   `gcp-vars` (flux-system) and the workload `cluster-vars`. Teardown is
   manual until the live acceptance run.
 - `workload/`: synced by each WORKLOAD cluster's Flux.
-  - `base/`: ACK controllers and S3/RDS/IAM custom resources.
+  - `base/`: intentionally empty since issue #346 (the ACK controllers and
+    the S3/RDS/IAM custom resources moved to `mgmt/aws/infrastructure/`);
+    the workload Flux instance stays ready for a future application
+    workload.
   - `azure-base/`: cert-manager, ASO (workload identity), and the Azure
     resources (VNet + delegated subnet + private DNS, storage account +
     container, PostgreSQL Flexible Server). `swedencentral-01/` points at it.
@@ -118,13 +122,10 @@ resources. There is no app source code here, only declarative infrastructure.
   `offline-run.sh` verifies the signature, checksums, and extracted SBOMs
   before staging; operator builds use `ZARF_SIGNING_KEY` / `ZARF_VERIFY_KEY`,
   while upstream CI uses GitHub OIDC keyless signing.
-  The `air-gapped` workflow (upstream main only, nightly at 02:17 UTC or
-  manual dispatch) builds the ARM64 bundle on an arm64 runner, then runs
-  two comparison deployments in parallel: one with public traffic monitored
-  and one with external egress blocked (fails if any public traffic was
-  attempted). Both deploy evidence artifacts are uploaded. Running both is
-  a temporary comparison of validation accuracy and performance; the less
-  effective job will be removed after enough runs are evaluated.
+  The `air-gapped` workflow (nightly at 02:17 UTC or manual dispatch, on
+  any repository that carries it) builds the ARM64 bundle on an arm64 runner,
+  then deploys it with external egress blocked (fails if any public traffic
+  was attempted). The deploy evidence artifact is uploaded.
 - `bootstrap-rs/`: `krops-bootstrap`, the Rust CLI that ports the imperative
   lifecycle (bootstrap + pivot; teardown under issue #100). Behavioral port:
   same step order, messages, and env interface as the scripts, plus
@@ -289,7 +290,7 @@ Load these only when the task touches their domain:
 - `docs/extending.md`: adding a workload cluster, adding apps, adding other providers (Azure, Talos, k0smotron).
 - `docs/secrets.md`: SOPS + age setup, credential rotation.
 - `docs/konflate.md`: rendered PR review, CI gate, tokens, write-back.
-- `docs/aws-iam.md`: EKS Pod Identity, ACK controller roles, reader user.
+- `docs/aws-iam.md`: management-cluster ACK controllers (static SOPS credentials, union scope), reader roles, reader user.
 - `docs/operations.md`: quotas, configuration, bootstrap, verification.
 - `docs/workload-resources.md`: S3/RDS posture, known limitations.
 - `docs/airgap.md`: Zarf offline bundle for the local-host profile.
