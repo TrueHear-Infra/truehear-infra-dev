@@ -181,17 +181,18 @@ You also need:
   (fine-grained with read-only Contents permission, or classic with `repo`
   scope). The Flux Operator chart is pulled anonymously.
 - AWS credentials with permission to create EKS clusters, VPCs, and IAM roles.
-  For the ACK controllers the same principal additionally needs
-  `iam:CreateRole`/`PutRolePolicy`/`GetRole`/`TagRole`,
+  The same principal runs every ACK controller on the management cluster
+  (issue #346), so it additionally needs the union of the three former
+  per-controller pod-identity role policies: S3 bucket management scoped to
+  `krops-*`, RDS instance management scoped to `krops-*` (plus
+  `secretsmanager:CreateSecret`/`TagResource`/`RotateSecret` on `rds!*` for
+  managed master passwords and `kms:CreateGrant`/`ListGrants`/`RevokeGrant`
+  with `kms:GrantIsForAWSResource`), and IAM role management scoped to
+  `krops-*` (`iam:CreateRole`/`PutRolePolicy`/`GetRole`/`TagRole`) plus
   `iam:CreateUser`/`PutUserPolicy`/`GetUser`/`GetUserPolicy`/`TagUser`
-  (for the `krops-reader` console user), and
-  `eks:CreatePodIdentityAssociation`/`DescribePodIdentityAssociation`/
-  `DeletePodIdentityAssociation`. The `rds:*` management and
-  `secretsmanager:CreateSecret`/`TagResource`/`RotateSecret` permissions
-  (managed master passwords) used by the workload clusters' ACK RDS
-  controllers are granted through the Git-declared
-  `krops-ack-rds-controller` pod-identity role; no extra static
-  credentials are required for them.
+  (for the `krops-reader` console user). This is a deliberate
+  least-privilege trade-off: one static principal now holds the union —
+  see [aws-iam.md](./aws-iam.md) for the exact action lists.
 - The `clusterawsadm` IAM CloudFormation stack provisioned before bootstrap and
   removed by a full AWS teardown:
 
@@ -321,7 +322,7 @@ This initial imperative phase performs these steps:
    and deletes the kind cluster (see [Pivot recovery](#pivot-recovery)).
 
 Everything downstream (providers, EKS clusters, workload Flux instances, the
-ACK operator, IAM role, pod identity bindings, and S3 buckets) reconciles
+ACK controllers, IAM roles, and S3 buckets) reconciles
 from Git with no further manual steps.
 
 The local-host environment performs the cluster, Flux Operator, and FluxInstance
@@ -455,15 +456,16 @@ For the AWS chain:
 ```sh
 # Management cluster after a toolbox run
 export KUBECONFIG="$PWD/.kube/krops-mgmt.yaml"
-kubectl get kustomizations -n flux-system            # all Ready
+kubectl get kustomizations -n flux-system            # all Ready (incl. ack-controllers, workload-resources)
 kubectl get clusters.cluster.x-k8s.io -A             # Provisioned
+kubectl get buckets.s3.services.k8s.aws -n ack-system
+kubectl get dbinstances.rds.services.k8s.aws -n ack-system
 kubectl get roles.iam.services.k8s.aws -n ack-system
-kubectl get podidentityassociations.eks.services.k8s.aws -n ack-system
 
 # Workload clusters: export kubeconfigs first
 #   mise -E aws run kubeconfigs && export KUBECONFIG=~/.kube/krops-workloads.yaml
 #   kubectl config use-context eu-north-1-workload   (or eu-west-1-workload)
-kubectl get kustomizations -n flux-system            # aws-operators, s3-buckets, rds-instances, iam-roles
+kubectl get kustomizations -n flux-system            # root only; workload/base is empty since #346
 
 # AWS
 aws s3api get-bucket-encryption    --bucket krops-<account>-eu-north-1-workload-data
