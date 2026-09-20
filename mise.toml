@@ -133,7 +133,7 @@ if ! uv run ruff check .; then
   echo "    FAILED: Python lint" >&2
   fail=1
 fi
-for dir in $(find mgmt workload -name kustomization.yaml -exec dirname {} \; | sort -u); do
+for dir in $(find mgmt workload virtualized-e2e -name kustomization.yaml -exec dirname {} \; | sort -u); do
   echo "==> kustomize build $dir"
   if ! kubectl kustomize "$dir" >/dev/null; then
     echo "    FAILED: $dir" >&2

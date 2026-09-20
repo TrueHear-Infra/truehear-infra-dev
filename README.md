@@ -343,6 +343,10 @@ teardown controls, toolbox release, and current parity status.
 ├── .github/workflows/             Validation, Rust/toolbox CI, docs CI and
 │                                  Pages deploy, signed releases
 ├── airgap/                        Zarf air-gap bundle, image inventory, scripts
+├── virtualized-e2e/               WireMock-virtualized e2e harness (#355):
+│                                  lib/ shared components + one arm per
+│                                  cloud (aws/ is the reference); not
+│                                  Flux-reconciled, no mise task yet
 ├── bootstrap-rs/                  Lifecycle CLI, toolbox Dockerfile, Rust tests
 ├── bootstrap.toml                 Repository-owned lifecycle configuration
 ├── bootstrap.sh / pivot.sh /      Native shell references and fallback paths;

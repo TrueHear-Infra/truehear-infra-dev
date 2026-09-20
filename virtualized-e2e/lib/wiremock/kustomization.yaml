@@ -1,0 +1,10 @@
+# Shared WireMock base for every cloud arm of the virtualized e2e harness
+# (issue #355). The templates carry envsubst placeholders (see example.env),
+# so this build proves structure only: arms compose it as a base and Phase 4
+# renders + applies. Not Flux-reconciled; no flux-ks.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml.tmpl
+  - service.yaml.tmpl
+  - deployment.yaml.tmpl

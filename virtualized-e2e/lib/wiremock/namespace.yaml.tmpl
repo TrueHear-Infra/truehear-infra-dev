@@ -1,0 +1,11 @@
+# WireMock Namespace (template)
+
+# Part of the shared virtualized e2e harness library (issue #355). Rendered
+# with envsubst before applying; see example.env beside this file for the
+# parameter list and lib/README.md for the render command.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${WIREMOCK_NAMESPACE}
+  labels:
+    app.kubernetes.io/part-of: krops-virtualized-e2e
