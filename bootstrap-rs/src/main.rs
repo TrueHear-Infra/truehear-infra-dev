@@ -3431,4 +3431,185 @@ mod tests {
             .unwrap()
             .contains_key(&format!("keys.{pubkey}.agekey")));
     }
+
+    // ── Clean-first-run waits (#348/#349) ────────────────────────────────────
+
+    #[test]
+    fn nodes_readiness_parses_kubectl_json() {
+        assert_eq!(nodes_readiness(r#"{"items":[]}"#), NodesReadiness::Nodeless);
+        let ready = r#"{"items":[{"status":{"conditions":[{"type":"Ready","status":"True"}]}}]}"#;
+        assert_eq!(nodes_readiness(ready), NodesReadiness::Ready);
+        let not_ready =
+            r#"{"items":[{"status":{"conditions":[{"type":"Ready","status":"False"}]}}]}"#;
+        assert_eq!(nodes_readiness(not_ready), NodesReadiness::Pending);
+        // One lagging node holds the whole wait.
+        let mixed = r#"{"items":[{"status":{"conditions":[{"type":"Ready","status":"True"}]}},{"status":{"conditions":[{"type":"Ready","status":"False"}]}}]}"#;
+        assert_eq!(nodes_readiness(mixed), NodesReadiness::Pending);
+        // A registered node without conditions yet is not Ready.
+        assert_eq!(
+            nodes_readiness(r#"{"items":[{"status":{}}]}"#),
+            NodesReadiness::Pending
+        );
+        // kubectl failed (API briefly unreachable) or returned garbage:
+        // keep waiting rather than erroring the poll.
+        assert_eq!(nodes_readiness(""), NodesReadiness::Pending);
+        assert_eq!(
+            nodes_readiness("The connection to the server was refused"),
+            NodesReadiness::Pending
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn poll_until_returns_on_immediate_success() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = calls.clone();
+        let found = poll_until(2400, 10, move || {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            async { true }
+        })
+        .await;
+        assert!(found);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn poll_until_succeeds_when_object_appears_after_delay() {
+        let answers =
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from([
+                false, false, false, true,
+            ])));
+        let scripted = answers.clone();
+        let found = poll_until(2400, 10, move || {
+            let next = scripted.lock().unwrap().pop_front().unwrap_or(true);
+            async move { next }
+        })
+        .await;
+        assert!(found);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn poll_until_probes_once_past_the_budget_before_failing() {
+        // A 30s budget at a 10s interval is 3 attempts, plus the final
+        // past-budget probe (the until-loop tests once more before failing).
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = calls.clone();
+        let found = poll_until(30, 10, move || {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            async { false }
+        })
+        .await;
+        assert!(!found);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 4);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cluster_definition_wait_succeeds_when_object_appears() {
+        let answers =
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from([
+                false, false, true,
+            ])));
+        let scripted = answers.clone();
+        let diagnosed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = diagnosed.clone();
+        wait_for_cluster_definition(
+            "test-mgmt",
+            "40m",
+            10,
+            move || {
+                let next = scripted.lock().unwrap().pop_front().unwrap_or(true);
+                async move { next }
+            },
+            move || {
+                let flag = flag.clone();
+                async move { flag.store(true, std::sync::atomic::Ordering::SeqCst) }
+            },
+        )
+        .await
+        .unwrap();
+        // No diagnostics on the success path.
+        assert!(!diagnosed.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cluster_definition_wait_surfaces_kustomizations_when_stuck() {
+        let diagnosed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = diagnosed.clone();
+        let err = wait_for_cluster_definition(
+            "test-mgmt",
+            "40m",
+            10,
+            || async { false },
+            move || {
+                let flag = flag.clone();
+                async move { flag.store(true, std::sync::atomic::Ordering::SeqCst) }
+            },
+        )
+        .await
+        .unwrap_err();
+        // Stuck Flux: the Kustomization conditions were surfaced, and the
+        // failure names the missing object and the spent budget.
+        assert!(diagnosed.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(
+            err.to_string(),
+            "Cluster 'test-mgmt' was not created within 40m"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn nodes_wait_succeeds_when_nodes_register_after_delay() {
+        use NodesReadiness::{Nodeless, Pending, Ready};
+        let answers =
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from([
+                Nodeless, Nodeless, Pending, Ready,
+            ])));
+        let scripted = answers.clone();
+        wait_for_nodes_ready(
+            "15m",
+            10,
+            move || {
+                let next = scripted.lock().unwrap().pop_front().unwrap_or(Ready);
+                async move { next }
+            },
+            || async {},
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn nodes_wait_fails_actionably_on_timeout() {
+        let diagnosed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = diagnosed.clone();
+        let err = wait_for_nodes_ready(
+            "15m",
+            10,
+            || async { NodesReadiness::Nodeless },
+            move || {
+                let flag = flag.clone();
+                async move { flag.store(true, std::sync::atomic::Ordering::SeqCst) }
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(diagnosed.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(
+            err.to_string(),
+            "management cluster nodes were not all Ready within 15m"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn nodes_wait_never_succeeds_while_nodeless() {
+        // Regression pin for #349: a nodeless target must burn the whole
+        // budget, never succeed early (kubectl wait --all errored here).
+        let err = wait_for_nodes_ready(
+            "15m",
+            10,
+            || async { NodesReadiness::Nodeless },
+            || async {},
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("not all Ready within 15m"));
+    }
 }
