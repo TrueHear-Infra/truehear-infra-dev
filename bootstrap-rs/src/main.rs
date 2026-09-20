@@ -311,6 +311,27 @@ fn extract_age_pubkey(content: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// Resolve the age public key planted in the sops-age secret. The
+/// `AGE_PUBLIC_KEY` override wins only when it agrees with the key file: a
+/// stale override makes Flux name the secret entry after a key that matches
+/// no SOPS recipient, so every `*.sops.yaml` Kustomization then fails with
+/// `no keys found in sops-age secret` (issue #350). A mismatch against a
+/// non-empty key-file pubkey fails fast, naming both public keys. Returns
+/// `None` when neither source yields a key.
+fn resolve_age_pubkey(
+    override_key: Option<&str>,
+    key_file_pubkey: Option<String>,
+) -> Result<Option<String>> {
+    let override_key = override_key.filter(|k| !k.is_empty());
+    match (override_key, key_file_pubkey) {
+        (Some(ovr), Some(file_key)) if ovr != file_key => bail!(
+            "AGE_PUBLIC_KEY ('{ovr}') does not match the public key in the age key file ('{file_key}').\n       The override would plant the wrong key in the sops-age secret and Flux could not decrypt any *.sops.yaml.\n       Remove AGE_PUBLIC_KEY from .env or set it to the key file's public key. See docs/secrets.md."
+        ),
+        (Some(ovr), _) => Ok(Some(ovr.to_string())),
+        (None, file_key) => Ok(file_key),
+    }
+}
+
 /// Extract the numeric host port from `<engine> port` output ("0.0.0.0:32771").
 fn extract_workload_port(port_output: &str) -> Option<String> {
     port_output
@@ -768,18 +789,20 @@ async fn preflight_github(cfg: &Config, http: &reqwest::Client) -> Result<Github
         );
     }
 
-    // Now safely extract the public key (validation already passed).
-    let age_pubkey = cfg
-        .age_public_key
-        .clone()
-        .filter(|k| !k.is_empty())
-        .or_else(|| extract_age_pubkey(&age_key_content))
-        .with_context(|| {
-            format!(
-                "Cannot determine age public key from '{}' or from AGE_PUBLIC_KEY env var.\n       Set AGE_PUBLIC_KEY in .env, or regenerate the key with: mise run sops-keygen",
-                age_key_file.display()
-            )
-        })?;
+    // Now safely extract the public key (validation already passed). A set
+    // AGE_PUBLIC_KEY still wins, but only after a cross-check against the
+    // key file: a stale override otherwise plants the wrong key in the
+    // sops-age secret and Flux cannot decrypt any *.sops.yaml (issue #350).
+    let age_pubkey = resolve_age_pubkey(
+        cfg.age_public_key.as_deref(),
+        extract_age_pubkey(&age_key_content),
+    )?
+    .with_context(|| {
+        format!(
+            "Cannot determine age public key from '{}' or from AGE_PUBLIC_KEY env var.\n       Set AGE_PUBLIC_KEY in .env, or regenerate the key with: mise run sops-keygen",
+            age_key_file.display()
+        )
+    })?;
 
     Ok(GithubContext {
         git_repo_url,
@@ -3081,6 +3104,54 @@ mod tests {
         );
         let missing = validate_age_key("# created: now\nAGE-SECRET-KEY-1X\n");
         assert_eq!(missing, vec!["# public key: comment"]);
+    }
+
+    #[test]
+    fn resolve_age_pubkey_accepts_matching_override() {
+        let file_key = extract_age_pubkey(VALID_AGE_KEY);
+        let resolved = resolve_age_pubkey(file_key.as_deref(), file_key.clone()).unwrap();
+        assert_eq!(resolved, file_key);
+    }
+
+    #[test]
+    fn resolve_age_pubkey_rejects_mismatched_override() {
+        let file_key = extract_age_pubkey(VALID_AGE_KEY).unwrap();
+        let stale = "age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqstale0";
+        let err = resolve_age_pubkey(Some(stale), Some(file_key.clone()))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains(stale), "error must name the override: {err}");
+        assert!(
+            err.contains(&file_key),
+            "error must name the key-file pubkey: {err}"
+        );
+    }
+
+    #[test]
+    fn resolve_age_pubkey_derives_from_key_file_without_override() {
+        let file_key = extract_age_pubkey(VALID_AGE_KEY);
+        assert_eq!(
+            resolve_age_pubkey(None, file_key.clone()).unwrap(),
+            file_key
+        );
+        // An empty-string AGE_PUBLIC_KEY counts as unset.
+        assert_eq!(
+            resolve_age_pubkey(Some(""), file_key.clone()).unwrap(),
+            file_key
+        );
+    }
+
+    #[test]
+    fn resolve_age_pubkey_keeps_override_when_key_file_yields_no_pubkey() {
+        // Documented setups rely on the override when the key file's public
+        // key cannot be extracted; only a contradictory one is rejected.
+        assert_eq!(
+            resolve_age_pubkey(Some("age1override"), None)
+                .unwrap()
+                .as_deref(),
+            Some("age1override")
+        );
+        assert_eq!(resolve_age_pubkey(None, None).unwrap(), None);
     }
 
     #[test]
