@@ -84,3 +84,4 @@ nav:
   - Dependencies: dependencies.md
   - Air-gapped krops: airgap.md
   - WireMock e2e spike findings (AWS): wiremock-e2e-spike-findings-aws.md
+  - WireMock e2e spike findings (Azure): wiremock-e2e-spike-findings-azure.md
