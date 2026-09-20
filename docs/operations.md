@@ -253,7 +253,7 @@ You also need:
 | Quota | Code | Needed | Why |
 |---|---|---|---|
 | EC2-VPC Elastic IPs (per region) | `L-0263D0A3` | ≥ 6 free in `eu-north-1`, ≥ 3 free in `eu-west-1` | One EIP per NAT gateway (3 AZs): two clusters in `eu-north-1` (management + workload), one in `eu-west-1` |
-| VPCs per region | `L-F678F1CE` | 8 in `eu-north-1` (increase requested; default 5) | One VPC per cluster plus pre-existing non-krops VPCs. e2e account 120392301094: `eu-north-1` full at 5/5 (increase to 8 pending), `eu-west-1` at 3/5 (headroom 2) |
+| VPCs per region | `L-F678F1CE` | 8 in `eu-north-1` (raised from the default 5) | One VPC per cluster plus pre-existing non-krops VPCs. e2e account 120392301094: `eu-north-1` quota raised to 8 (5 in use, headroom 3), `eu-west-1` at 3/5 (headroom 2) |
 
 The check is per region, and the default regional limit is 5, so a clean
 account stalls mid-run on the second `eu-north-1` cluster. Request the
