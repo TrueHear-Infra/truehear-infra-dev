@@ -144,6 +144,15 @@ the ACK surface from the prerequisites in [AWS environment](./aws.md).
   buckets; IAM cleanup on `krops-*`/`capa_*` roles, their instance profiles,
   and `krops-*` users; CloudFormation delete on the
   `cluster-api-provider-aws-sigs-k8s-io` stack in both regions.
+- Self-escalation guard (`krops-ci-e2e-self-deny`): explicit Deny on the
+  role's own ARN for `PutRolePolicy`, `DeleteRolePolicy`,
+  `AttachRolePolicy`, `DetachRolePolicy`, `UpdateAssumeRolePolicy`,
+  `DeleteRole`, and permissions-boundary changes. The `role/krops-*` globs
+  in `ack-mgmt` and `sweep` match `krops-ci-e2e` itself; without this Deny a
+  workflow session could grant itself arbitrary inline permissions or widen
+  its own trust (verified with `simulate-principal-policy`: the four
+  escalation actions are now `explicitDeny`, lifecycle actions on other
+  `krops-*` roles remain `allowed`).
 
 Narrowed relative to the upstream CAPA policy, with the repo as ground
 truth: no `ec2:RunInstances`/`TerminateInstances` (no EC2 machine pools), no
@@ -190,8 +199,11 @@ integration is tracked in #185.
 - Cut all CI access: delete the OIDC provider
   (`aws iam delete-open-id-connect-provider --open-id-connect-provider-arn
   arn:aws:iam::120392301094:oidc-provider/token.actions.githubusercontent.com`).
-  The role remains but can no longer be assumed from GitHub.
+  The role remains but can no longer be assumed from GitHub. Note this stops
+  NEW assumptions only: sessions already issued run until their granted
+  expiry (4 hour maximum), so access is not cut instantly during an
+  incident.
 - Narrow instead: tighten the trust policy's `sub` condition to specific
   refs (above).
-- Rotate: nothing to rotate; sessions expire with the OIDC token (4 hour
-  maximum).
+- Rotate: nothing to rotate; STS sessions are short-lived (1 hour typical,
+  4 hour maximum) and independent of the short-lived OIDC token.
