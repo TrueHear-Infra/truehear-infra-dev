@@ -126,7 +126,7 @@ pins together with their declarative counterparts. See
 | `GITHUB_TOKEN` | required for `aws` and `local-talos` | PAT with read access to the repository |
 | `GITHUB_USER` | `git` | Basic-auth username paired with the PAT |
 | `AGE_KEY_FILE` | `age.agekey` | SOPS age private key loaded into `sops-age` |
-| `AGE_PUBLIC_KEY` | derived from `AGE_KEY_FILE` | Public key override during secret creation |
+| `AGE_PUBLIC_KEY` | derived from `AGE_KEY_FILE` | Public key override during secret creation; must match the key file's public key when both are known (preflight fails fast on a mismatch) |
 | `OCI_REPOSITORY` / `OCI_TAG` | `krops` / `latest` | Local-host OCI artifact name |
 | `BOOTSTRAP_PIVOT` | `1` | Any value other than literal `1` skips pivot |
 | `MGMT_KUBECONFIG` | `~/.kube/krops-mgmt.yaml` | Exported management kubeconfig for native runs |
