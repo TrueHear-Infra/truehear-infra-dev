@@ -107,3 +107,126 @@ Then, to browse the repo-created resources in the AWS console:
 
 3. Browse the `krops-*` S3 buckets and RDS instances (switch the console
    region to eu-north-1/eu-west-1 for the databases).
+
+## CI access: GitHub Actions OIDC and the `krops-ci-e2e` role
+
+CI authenticates to the e2e account (`120392301094`) through GitHub's OIDC
+provider and assumes a least-privilege role for the e2e lifecycle (issue
+#379). No AWS access keys are stored; every session is short-lived. Created
+imperatively, additive only.
+
+### Resources
+
+- OIDC provider:
+  `arn:aws:iam::120392301094:oidc-provider/token.actions.githubusercontent.com`
+  (audience `sts.amazonaws.com`).
+- Role: `arn:aws:iam::120392301094:role/krops-ci-e2e` (max session 4 hours).
+- Five customer-managed policies, grouped by concern:
+  `krops-ci-e2e-capa-ec2`, `krops-ci-e2e-capa-eks`, `krops-ci-e2e-ack-mgmt`,
+  `krops-ci-e2e-sweep`, `krops-ci-e2e-self-deny`.
+
+### Trust policy
+
+The role trusts only the GitHub OIDC provider with audience
+`sts.amazonaws.com` and `sub` matching `repo:polarsquad/krops:*` (any ref in
+that repo). To narrow later, replace the `StringLike` `sub` value with
+explicit refs, for example
+`repo:polarsquad/krops:ref:refs/heads/main`, via
+`iam:UpdateAssumeRolePolicy`.
+
+### Permission groupings
+
+Derived from the repo, not guesswork: the CAPA surface comes from the pinned
+`clusterawsadm` 2.13.0 `print-policy` output evaluated with krops' feature
+gates (`EKS=true,EKSEnableIAM=true,EKSAllowAddRoles=true,MachinePool=true`),
+the sweep surface from `teardown.sh` / `bootstrap-rs/src/teardown.rs`, and
+the ACK surface from the prerequisites in [AWS environment](./aws.md).
+
+- EC2/VPC (`krops-ci-e2e-capa-ec2`): the full describe set; creates only in
+  `eu-north-1` and `eu-west-1` (`aws:RequestedRegion`); mutations (delete,
+  modify, attach/detach, associate, authorize/revoke, release) only on
+  resources carrying a `sigs.k8s.io/cluster-api-provider-aws/role` tag
+  (CAPA-created), plus security-group rule and delete operations on the
+  EKS-created cluster security groups (`aws:eks:cluster-name` = `default_*`);
+  `CreateTags`/`DeleteTags` only with CAPA tag keys.
+- EKS (`krops-ci-e2e-capa-eks`): cluster, nodegroup, addon, and access-entry
+  CRUD scoped to `default_*` clusters in the two e2e regions (the non-krops
+  `training` cluster is out of scope); the two EKS service-linked roles;
+  CAPA per-cluster IAM roles on `capa_*` and the cluster name prefixes;
+  `iam:PassRole` to `eks.amazonaws.com` for the clusterawsadm stack roles
+  and `capa_*`; SSM optimized-AMI parameters, KMS grants on
+  `alias/cluster-api-provider-aws-*`, Secrets Manager on
+  `aws.cluster.x-k8s.io/*` secrets.
+- Management ACK controllers (`krops-ci-e2e-ack-mgmt`): `krops-*` IAM role
+  and user management (the `krops-ack-*` roles, the `krops-*-reader` roles,
+  the `krops-reader` user) and pod identity associations on `default_*`
+  clusters. No OIDC provider management anywhere: IRSA is unused (pod
+  identity instead), which also protects the GitHub OIDC provider itself.
+- Orphan sweep (`krops-ci-e2e-sweep`): `sts:GetCallerIdentity`; RDS delete
+  on `krops-*` instances; S3 version purge and bucket delete on `krops-*`
+  buckets; IAM cleanup on `krops-*`/`capa_*` roles, their instance profiles,
+  and `krops-*` users; CloudFormation delete on the
+  `cluster-api-provider-aws-sigs-k8s-io` stack in both regions.
+- Self-escalation guard (`krops-ci-e2e-self-deny`): explicit Deny on the
+  role's own ARN for `PutRolePolicy`, `DeleteRolePolicy`,
+  `AttachRolePolicy`, `DetachRolePolicy`, `UpdateAssumeRolePolicy`,
+  `DeleteRole`, and permissions-boundary changes. The `role/krops-*` globs
+  in `ack-mgmt` and `sweep` match `krops-ci-e2e` itself; without this Deny a
+  workflow session could grant itself arbitrary inline permissions or widen
+  its own trust (verified with `simulate-principal-policy`: the four
+  escalation actions are now `explicitDeny`, lifecycle actions on other
+  `krops-*` roles remain `allowed`).
+
+Narrowed relative to the upstream CAPA policy, with the repo as ground
+truth: no `ec2:RunInstances`/`TerminateInstances` (no EC2 machine pools), no
+ELB/Auto Scaling writes (no `AWSMachinePool` or `AWSCluster`), no spot or
+fargate service-linked roles (all pools `onDemand`, no fargate profiles), no
+IPAM/IPv6 actions (IPv4 clusters), no launch-template writes (the
+`AWSManagedMachinePool` specs declare none).
+
+### Not covered (operator steps)
+
+- First-time creation of the clusterawsadm CloudFormation stack
+  (`mise -E aws run aws-bootstrap`) needs `cloudformation:CreateStack` plus
+  IAM writes on the `*.cluster-api-provider-aws.sigs.k8s.io` roles. The
+  stack is already `CREATE_COMPLETE` (2026-09-01, per #143), so recreating
+  it stays an operator step.
+- Service-quota increases (see [Operations](./operations.md)) and the
+  one-time `iam:CreateLoginProfile` for `krops-reader` (above) stay operator
+  steps.
+- The committed `aws-credentials.sops.yaml` secrets (CAPA and the management
+  ACK controllers after the pivot) still hold the `capi-demo` credential
+  profile; the OIDC role covers the ambient/script surface and the
+  pre-pivot bootstrap cluster. Replacing the committed secret is part of
+  the #185 wiring.
+
+### Assuming the role from a workflow
+
+```yaml
+permissions:
+  id-token: write
+  contents: read
+steps:
+  - uses: aws-actions/configure-aws-credentials@v4
+    with:
+      role-to-assume: arn:aws:iam::120392301094:role/krops-ci-e2e
+      aws-region: eu-north-1
+```
+
+The action exchanges the workflow's OIDC token for session credentials;
+nothing is stored. The role is not wired into any workflow yet; CI
+integration is tracked in #185.
+
+### Revocation
+
+- Cut all CI access: delete the OIDC provider
+  (`aws iam delete-open-id-connect-provider --open-id-connect-provider-arn
+  arn:aws:iam::120392301094:oidc-provider/token.actions.githubusercontent.com`).
+  The role remains but can no longer be assumed from GitHub. Note this stops
+  NEW assumptions only: sessions already issued run until their granted
+  expiry (4 hour maximum), so access is not cut instantly during an
+  incident.
+- Narrow instead: tighten the trust policy's `sub` condition to specific
+  refs (above).
+- Rotate: nothing to rotate; STS sessions are short-lived (1 hour typical,
+  4 hour maximum) and independent of the short-lived OIDC token.
