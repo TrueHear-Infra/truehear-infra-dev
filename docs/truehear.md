@@ -18,12 +18,24 @@ krops-side files.
 | Variable | Default | Upstream dev value |
 |---|---|---|
 | `TRUEHEAR_ENVIRONMENT` | `dev` | `dev` |
-| `KEYCLOAK_HOSTNAME` | `https://keycloak.keycloak.svc.cluster.local` | `https://auth.dev.truehearkiosk.com` |
-| `KEYCLOAK_STORAGE_CLASS` | `local-path` | `truehear-encrypted-gp3` |
+| `KEYCLOAK_HOSTNAME` | `https://localhost:8443` | `https://auth.dev.truehearkiosk.com` |
+| `KEYCLOAK_STORAGE_CLASS` | `local-path` (demo only, see below) | `truehear-encrypted-gp3` |
 
 Set them in the per-region FluxInstance ConfigMap under
 `mgmt/<env>/addons/flux-apps/flux-instance.yaml` (the same ConfigMap that
 carries `AWS_REGION` etc.).
+
+### Storage class on cloud environments (required)
+
+`KEYCLOAK_STORAGE_CLASS` defaults to `local-path`, which only exists where
+local-path-provisioner is installed (`workload/local-host`). The AWS,
+Azure and GCP overlays compose `workload/base`, so their clusters inherit
+Keycloak + PostgreSQL: each region's `cluster-vars` MUST set
+`KEYCLOAK_STORAGE_CLASS` to a CSI-backed class (on AWS, the EBS CSI
+class). Without it the PostgreSQL PVC stays Pending and `keycloak` never
+becomes ready. None of the cloud `cluster-vars` set it yet, so the
+follow-up per-region values are a prerequisite for any cloud rollout of
+this layer.
 
 ## Not ported (follow-ups for the fork)
 

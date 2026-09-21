@@ -14,8 +14,11 @@ spec:
       spec:
         accessModes:
           - ReadWriteOnce
-        # Upstream dev: truehear-encrypted-gp3 (EBS). local-host ships
-        # local-path-provisioner (workload/local-host/local-path-storage).
+        # Default local-path exists only where local-path-provisioner is
+        # installed (local-host ships it). Cloud environments MUST set
+        # KEYCLOAK_STORAGE_CLASS in cluster-vars (e.g. their CSI class);
+        # with the default on a cluster without local-path, the PVC stays
+        # Pending and keycloak never becomes ready.
         storageClassName: ${KEYCLOAK_STORAGE_CLASS:=local-path}
         resources:
           requests:

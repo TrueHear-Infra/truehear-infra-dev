@@ -9,8 +9,13 @@ metadata:
     app.kubernetes.io/part-of: truehear-platform
 data:
   # Upstream dev: https://auth.dev.truehearkiosk.com (behind the ALB Ingress,
-  # not ported). The default is upstream's `local` value: in-cluster access
-  # over a port-forward with the TLS SAN issued for this name.
-  KC_HOSTNAME: ${KEYCLOAK_HOSTNAME:=https://keycloak.keycloak.svc.cluster.local}
+  # not ported). Keycloak fixes every redirect and console URL to this value
+  # (KC_HOSTNAME_STRICT below), so it must be the address clients actually
+  # resolve. The demo default is the port-forward address from `mise -E
+  # local-host run keycloak-port-forward` (https://localhost:8443); the TLS
+  # certificate SAN covers localhost. Environments with an ingress or
+  # in-cluster consumers set KEYCLOAK_HOSTNAME in cluster-vars to their
+  # reachable URL.
+  KC_HOSTNAME: ${KEYCLOAK_HOSTNAME:=https://localhost:8443}
   KC_HOSTNAME_STRICT: 'true'
   KC_PROXY_HEADERS: xforwarded
