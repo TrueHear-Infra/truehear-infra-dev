@@ -1,0 +1,187 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: keycloak-postgresql
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak-postgresql
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: truehear-platform
+spec:
+  replicas: 1
+  serviceName: keycloak-postgresql-internal
+  podManagementPolicy: OrderedReady
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak-postgresql
+      app.kubernetes.io/component: database
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak-postgresql
+        app.kubernetes.io/component: database
+        app.kubernetes.io/part-of: truehear-platform
+    spec:
+      serviceAccountName: keycloak-postgresql
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: prepare-tls
+          image: postgres:17.6-bookworm
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -ec
+            - |
+              cp /source/tls.crt /runtime/tls.crt
+              cp /source/tls.key /runtime/tls.key
+              cp /source/ca.crt /runtime/ca.crt
+              chmod 0600 /runtime/tls.key
+              chmod 0644 /runtime/tls.crt /runtime/ca.crt
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsGroup: 999
+            runAsNonRoot: true
+            runAsUser: 999
+          volumeMounts:
+            - name: tls-source
+              mountPath: /source
+              readOnly: true
+            - name: tls-runtime
+              mountPath: /runtime
+      containers:
+        - name: postgresql
+          image: postgres:17.6-bookworm
+          imagePullPolicy: IfNotPresent
+          args:
+            - -c
+            - ssl=on
+            - -c
+            - ssl_cert_file=/var/run/postgresql-tls/tls.crt
+            - -c
+            - ssl_key_file=/var/run/postgresql-tls/tls.key
+            - -c
+            - ssl_ca_file=/var/run/postgresql-tls/ca.crt
+            - -c
+            - hba_file=/etc/postgresql-security/pg_hba.conf
+            - -c
+            - password_encryption=scram-sha-256
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-postgresql-credentials
+                  key: database
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-postgresql-credentials
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-postgresql-credentials
+                  key: password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - pg_isready --host=/var/run/postgresql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"
+            failureThreshold: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - pg_isready --host=/var/run/postgresql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"
+            failureThreshold: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - pg_isready --host=/var/run/postgresql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"
+            failureThreshold: 6
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsGroup: 999
+            runAsNonRoot: true
+            runAsUser: 999
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: tls-runtime
+              mountPath: /var/run/postgresql-tls
+              readOnly: true
+            - name: runtime
+              mountPath: /var/run/postgresql
+            - name: temporary
+              mountPath: /tmp
+            - name: postgresql-configuration
+              mountPath: /etc/postgresql-security
+              readOnly: true
+      volumes:
+        - name: tls-source
+          secret:
+            secretName: keycloak-postgresql-tls
+            defaultMode: 0440
+        - name: tls-runtime
+          emptyDir:
+            medium: Memory
+        - name: runtime
+          emptyDir:
+            medium: Memory
+        - name: temporary
+          emptyDir: {}
+        - name: postgresql-configuration
+          configMap:
+            name: keycloak-postgresql-configuration
+            defaultMode: 0444
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: keycloak-postgresql
+          app.kubernetes.io/component: database
+          app.kubernetes.io/part-of: truehear-platform
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi

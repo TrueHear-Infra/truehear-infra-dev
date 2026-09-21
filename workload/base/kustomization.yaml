@@ -8,3 +8,4 @@ kind: Kustomization
 # to live here moved to mgmt/aws/infrastructure/ in issue #346.
 resources:
   - truehear-platform/flux-ks.yaml
+  - keycloak/flux-ks.yaml

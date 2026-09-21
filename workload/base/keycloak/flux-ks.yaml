@@ -1,0 +1,45 @@
+---
+# ══════════════════════════════════════════════════════════════════════════════
+# Flux Kustomization: Keycloak + PostgreSQL. dependsOn truehear-platform for
+# ordering only (its own Namespace is in services/keycloak/base). wait: false
+# and a long timeout: the first Keycloak start migrates its schema and the
+# init container blocks until PostgreSQL answers over TLS. decryption: the
+# four *.sops.yaml Secrets are decrypted with the sops-age key the management
+# cluster delivers through the flux-apps ClusterResourceSet.
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: keycloak
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 2m
+  timeout: 15m
+  prune: true
+  wait: false
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./workload/base/keycloak
+  dependsOn:
+    - name: truehear-platform
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  postBuild:
+    substituteStrategy: Always
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars
+        optional: true
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: keycloak-postgresql
+      namespace: keycloak
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: keycloak
+      namespace: keycloak

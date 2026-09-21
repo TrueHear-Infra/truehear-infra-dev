@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-configuration
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/component: identity-provider
+    app.kubernetes.io/part-of: truehear-platform
+data:
+  # Upstream dev: https://auth.dev.truehearkiosk.com (behind the ALB Ingress,
+  # not ported). The default is upstream's `local` value: in-cluster access
+  # over a port-forward with the TLS SAN issued for this name.
+  KC_HOSTNAME: ${KEYCLOAK_HOSTNAME:=https://keycloak.keycloak.svc.cluster.local}
+  KC_HOSTNAME_STRICT: 'true'
+  KC_PROXY_HEADERS: xforwarded
