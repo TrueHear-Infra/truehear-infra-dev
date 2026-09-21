@@ -403,6 +403,16 @@
       "versioningTemplate": "docker",
       "autoReplaceStringTemplate": "{{{indent}}}version: v{{{newValue}}}"
     },
+    // ── virtualized-e2e harness images ───────────────────────────────────
+    {
+      "customType": "regex",
+      "description": "Annotated docker image pins in the virtualized-e2e harness templates (issue #355)",
+      "managerFilePatterns": ["/(^|/)virtualized-e2e/.+\\.ya?ml\\.tmpl$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z0-9-]+) depName=(?<depName>\\S+)\\n\\s+image: [^\\s:]+:(?<currentValue>[^\\s@:]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?"
+      ],
+      "versioningTemplate": "docker"
+    },
     // ── airgap image inventory and zarf package ──────────────────────────
     {
       "customType": "regex",
@@ -546,6 +556,12 @@
       "description": "Keep Zarf GitHub release asset URLs and SHA-256 checksums together",
       "matchDatasources": ["github-release-attachments"],
       "matchFileNames": ["airgap/zarf.yaml"],
+      "pinDigests": true
+    },
+    {
+      "description": "Pin virtualized-e2e harness container images by digest while retaining readable tags (issue #355)",
+      "matchDatasources": ["docker"],
+      "matchFileNames": ["virtualized-e2e/**/*.yaml.tmpl"],
       "pinDigests": true
     },
     {

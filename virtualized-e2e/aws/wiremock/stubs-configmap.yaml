@@ -1,0 +1,32 @@
+# WireMock stub mappings for the AWS arm (issue #355), mounted at
+# /home/wiremock/mappings by the WireMock Deployment.
+#
+# sts-get-caller-identity.json: every ACK controller calls STS
+# GetCallerIdentity at startup and treats failure as fatal (Phase 0 spike,
+# docs/wiremock-e2e-spike-findings-aws.md). This static mapping lets the
+# patched controllers boot before any Phase 2 recordings exist. The identity
+# is a placeholder account; nothing here authenticates against real AWS.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wiremock-stubs
+  namespace: wiremock-system
+  labels:
+    app.kubernetes.io/name: wiremock
+    app.kubernetes.io/part-of: krops-virtualized-e2e
+data:
+  sts-get-caller-identity.json: |
+    {
+      "request": {
+        "method": "POST",
+        "url": "/",
+        "bodyPatterns": [
+          {"contains": "Action=GetCallerIdentity"}
+        ]
+      },
+      "response": {
+        "status": 200,
+        "headers": {"Content-Type": "text/xml"},
+        "body": "<GetCallerIdentityResponse xmlns=\"https://sts.amazonaws.com/doc/2011-06-15/\"><GetCallerIdentityResult><Arn>arn:aws:iam::000000000000:user/krops-virtualized-e2e</Arn><UserId>AIDA00000000000000000</UserId><Account>000000000000</Account></GetCallerIdentityResult><ResponseMetadata><RequestId>00000000-0000-0000-0000-000000000000</RequestId></ResponseMetadata></GetCallerIdentityResponse>"
+      }
+    }

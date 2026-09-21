@@ -1,0 +1,50 @@
+# Strategic merge patch: CAPA endpoint interception (issue #355).
+#
+# Target: deployment/capa-controller-manager, namespace capa-system (created
+# by clusterctl init, outside this tree). Apply with:
+#   kubectl patch deployment capa-controller-manager -n capa-system \
+#     --type strategic --patch-file virtualized-e2e/aws/wiremock/patches/capa-controller-manager.yaml
+#
+# Mechanism (Phase 0 spike, docs/wiremock-e2e-spike-findings-aws.md):
+# AWS_ENDPOINT_URL is honored by CAPA v2.13.0 for every service tested; the
+# per-service variables are set as well so Phase 2 can split recordings per
+# service. SSL_CERT_FILE points Go's crypto/x509 at the mounted throwaway
+# CA. The wiremock-ca ConfigMap must exist in this namespace (volumes cannot
+# cross namespaces).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: capa-controller-manager
+  namespace: capa-system
+spec:
+  template:
+    spec:
+      volumes:
+        - name: wiremock-ca
+          configMap:
+            name: wiremock-ca
+      containers:
+        - name: manager
+          env:
+            - name: AWS_ENDPOINT_URL
+              value: "https://wiremock.wiremock-system.svc"
+            - name: AWS_ENDPOINT_URL_EC2
+              value: "https://wiremock.wiremock-system.svc"
+            - name: AWS_ENDPOINT_URL_ELB
+              value: "https://wiremock.wiremock-system.svc"
+            - name: AWS_ENDPOINT_URL_STS
+              value: "https://wiremock.wiremock-system.svc"
+            - name: AWS_ENDPOINT_URL_IAM
+              value: "https://wiremock.wiremock-system.svc"
+            - name: AWS_ENDPOINT_URL_SSM
+              value: "https://wiremock.wiremock-system.svc"
+            - name: AWS_ENDPOINT_URL_SECRETSMANAGER
+              value: "https://wiremock.wiremock-system.svc"
+            - name: AWS_ENDPOINT_URL_EKS
+              value: "https://wiremock.wiremock-system.svc"
+            - name: SSL_CERT_FILE
+              value: /certs/ca.crt
+          volumeMounts:
+            - name: wiremock-ca
+              mountPath: /certs
+              readOnly: true

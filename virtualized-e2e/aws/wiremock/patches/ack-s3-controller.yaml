@@ -1,0 +1,45 @@
+# Strategic merge patch: ACK S3 controller endpoint interception (#355).
+#
+# Target: deployment/ack-s3-controller-s3-chart, namespace ack-system (Flux
+# HelmRelease ack-s3-controller, chart s3-chart; outside this tree). Apply:
+#   kubectl patch deployment ack-s3-controller-s3-chart -n ack-system \
+#     --type strategic --patch-file virtualized-e2e/aws/wiremock/patches/ack-s3-controller.yaml
+#
+# Mechanism (Phase 0 spike, docs/wiremock-e2e-spike-findings-aws.md):
+# AWS_ENDPOINT_URL plus the per-service S3 and STS variants; SSL_CERT_FILE
+# points Go's crypto/x509 at the mounted throwaway CA. The controller also
+# needs the STS GetCallerIdentity boot stub (stubs-configmap.yaml) to start
+# its workers. The wiremock-ca ConfigMap must exist in this namespace.
+#
+# Note: bucket-scoped S3 calls use virtual-hosted addressing
+# (<bucket>.wiremock.wiremock-system.svc), which needs a CoreDNS template
+# stanza resolving that wildcard to the Service ClusterIP. That stanza ships
+# with the Phase 2 recordings; the wildcard SANs are already on the server
+# certificate (see lib/wiremock/deployment.yaml.tmpl).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ack-s3-controller-s3-chart
+  namespace: ack-system
+spec:
+  template:
+    spec:
+      volumes:
+        - name: wiremock-ca
+          configMap:
+            name: wiremock-ca
+      containers:
+        - name: controller
+          env:
+            - name: AWS_ENDPOINT_URL
+              value: "https://wiremock.wiremock-system.svc"
+            - name: AWS_ENDPOINT_URL_S3
+              value: "https://wiremock.wiremock-system.svc"
+            - name: AWS_ENDPOINT_URL_STS
+              value: "https://wiremock.wiremock-system.svc"
+            - name: SSL_CERT_FILE
+              value: /certs/ca.crt
+          volumeMounts:
+            - name: wiremock-ca
+              mountPath: /certs
+              readOnly: true

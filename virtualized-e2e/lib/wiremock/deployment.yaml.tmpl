@@ -1,0 +1,114 @@
+# WireMock standalone Deployment (template), virtualized e2e harness (#355).
+#
+# Rendered with envsubst before applying; see example.env beside this file.
+# Placeholders appear in string values only, so the cloud arms can also list
+# this file in a kustomization and keep `kubectl kustomize` green.
+#
+# Image: 3.13.2-2 is the 3.13.2 line the Phase 0 spikes ran; the plain 3.13.2
+# docker tag was republished with broken per-host MITM cert generation
+# (docs/wiremock-e2e-spike-findings-gcp.md), so the tag carries the -2 suffix.
+#
+# TLS material contract (created per run by the Phase 4 script, never
+# committed): Secret ${WIREMOCK_KEYSTORE_SECRET} holds the JKS keystore and
+# its passwords (keys: wiremock.jks, keystore-password, key-manager-password),
+# built from a throwaway CA. The server certificate inside it must carry SANs
+# for the Service names (wiremock.${WIREMOCK_NAMESPACE}.svc and the
+# cluster.local form), the wildcard forms of both (for S3-style
+# virtual-hosted bucket addressing), and localhost (for admin access over
+# kubectl port-forward). Controllers trust the CA through a wiremock-ca
+# ConfigMap mounted by the per-cloud arm patches, not through this Secret.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wiremock
+  namespace: ${WIREMOCK_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: wiremock
+    app.kubernetes.io/part-of: krops-virtualized-e2e
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: wiremock
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: wiremock
+        app.kubernetes.io/part-of: krops-virtualized-e2e
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: wiremock
+          # renovate: datasource=docker depName=wiremock/wiremock
+          image: wiremock/wiremock:3.13.2-2@sha256:27c4b74404f58ceedc6899f73abdfe228d8f80d5efa4d8bd42d6c155558b677c
+          args:
+            - --https-port=8443
+            - --https-keystore=/keystore/wiremock.jks
+            # Both password flags must be set: --key-manager-password
+            # defaults to the literal string "password" independently of
+            # --keystore-password (Phase 0 spike finding).
+            - --keystore-password=$(KEYSTORE_PASSWORD)
+            - --key-manager-password=$(KEY_MANAGER_PASSWORD)
+            # HTTPS only: every client (controllers, admin probes) has the
+            # throwaway CA, and plaintext HTTP would bypass the TLS proof.
+            - --disable-http
+            - --verbose
+          env:
+            - name: KEYSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ${WIREMOCK_KEYSTORE_SECRET}
+                  key: keystore-password
+            - name: KEY_MANAGER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ${WIREMOCK_KEYSTORE_SECRET}
+                  key: key-manager-password
+          ports:
+            - name: https
+              containerPort: 8443
+          # TCP probes: kubelet cannot complete an HTTPS handshake against
+          # the throwaway CA, so HTTP(S) probes would never pass.
+          readinessProbe:
+            tcpSocket:
+              port: https
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: https
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: keystore
+              mountPath: /keystore
+              readOnly: true
+            # Stub mappings as files: in-memory stubs (POSTed to /__admin)
+            # are wiped by any pod restart. Each cloud arm ships its own
+            # stubs ConfigMap; WireMock loads this directory at boot.
+            - name: stubs
+              mountPath: /home/wiremock/mappings
+              readOnly: true
+      volumes:
+        - name: keystore
+          secret:
+            secretName: ${WIREMOCK_KEYSTORE_SECRET}
+        - name: stubs
+          configMap:
+            name: ${WIREMOCK_STUBS_CONFIGMAP}

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://krops.build/schemas/virtualized-e2e/scenario.schema.json",
+  "title": "krops virtualized e2e scenario",
+  "description": "Phase 3 shape (issue #355) for one stateful cloud API scenario. A scenario binds an ordered set of request/response steps to a WireMock Scenario state machine: a step matches only in its requiredState, responds, and optionally advances to newState. Phase 3 tooling converts each scenario document into WireMock mapping files (scenarioName = name, requiredScenarioState = requiredState, newScenarioState = newState). This schema is the authoring contract; validate with any draft 2020-12 JSON Schema implementation.",
+  "type": "object",
+  "required": ["name", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Scenario name; becomes WireMock's scenarioName on every generated mapping."
+    },
+    "description": {
+      "type": "string",
+      "description": "What reconcile behavior this scenario models (for example: Bucket create, drift, delete)."
+    },
+    "initialState": {
+      "type": "string",
+      "default": "Started",
+      "description": "State the scenario starts in. 'Started' is WireMock's built-in initial state; override only when chaining scenarios."
+    },
+    "states": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true,
+      "description": "Declared state names for readability and tooling checks; steps reference these in requiredState and newState."
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/step"},
+      "description": "Ordered request/response steps. Order matters only for readability; matching is governed by states."
+    }
+  },
+  "$defs": {
+    "step": {
+      "type": "object",
+      "required": ["name", "request", "response"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Step name, for example 'create-bucket-first-call'."
+        },
+        "request": {
+          "type": "object",
+          "description": "WireMock request matcher (method, url/urlPath/urlPattern, queryParameters, headers, bodyPatterns), passed through to the generated mapping."
+        },
+        "response": {
+          "type": "object",
+          "description": "WireMock response definition (status, headers, body or jsonBody), passed through to the generated mapping."
+        },
+        "requiredState": {
+          "type": "string",
+          "description": "requiredScenarioState: the step matches only while the scenario is in this state. Omit for the initial state."
+        },
+        "newState": {
+          "type": "string",
+          "description": "newScenarioState: state entered after this step matches. Omit to keep the current state."
+        }
+      }
+    }
+  }
+}

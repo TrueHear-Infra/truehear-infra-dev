@@ -1,0 +1,39 @@
+# Strategic merge patch: ACK IAM controller endpoint interception (#355).
+#
+# Target: deployment/ack-iam-controller-iam-chart, namespace ack-system
+# (Flux HelmRelease ack-iam-controller, chart iam-chart; outside this
+# tree). Apply:
+#   kubectl patch deployment ack-iam-controller-iam-chart -n ack-system \
+#     --type strategic --patch-file virtualized-e2e/aws/wiremock/patches/ack-iam-controller.yaml
+#
+# Same mechanism as the S3 arm patch (docs/wiremock-e2e-spike-findings-aws.md):
+# endpoint override plus mounted throwaway CA, and the STS GetCallerIdentity
+# boot stub (stubs-configmap.yaml) so the manager can start. The wiremock-ca
+# ConfigMap must exist in this namespace.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ack-iam-controller-iam-chart
+  namespace: ack-system
+spec:
+  template:
+    spec:
+      volumes:
+        - name: wiremock-ca
+          configMap:
+            name: wiremock-ca
+      containers:
+        - name: controller
+          env:
+            - name: AWS_ENDPOINT_URL
+              value: "https://wiremock.wiremock-system.svc"
+            - name: AWS_ENDPOINT_URL_IAM
+              value: "https://wiremock.wiremock-system.svc"
+            - name: AWS_ENDPOINT_URL_STS
+              value: "https://wiremock.wiremock-system.svc"
+            - name: SSL_CERT_FILE
+              value: /certs/ca.crt
+          volumeMounts:
+            - name: wiremock-ca
+              mountPath: /certs
+              readOnly: true

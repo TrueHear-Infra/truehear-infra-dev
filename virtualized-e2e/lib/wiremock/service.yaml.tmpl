@@ -1,0 +1,22 @@
+# WireMock Service (template), virtualized e2e harness (#355).
+#
+# Rendered with envsubst before applying; see example.env beside this file.
+# The Service name is fixed to "wiremock": the server certificate SANs and
+# every per-cloud endpoint override derive from it
+# (https://wiremock.<namespace>.svc).
+apiVersion: v1
+kind: Service
+metadata:
+  name: wiremock
+  namespace: ${WIREMOCK_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: wiremock
+    app.kubernetes.io/part-of: krops-virtualized-e2e
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: wiremock
+  ports:
+    - name: https
+      port: 443
+      targetPort: https

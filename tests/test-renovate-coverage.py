@@ -65,6 +65,7 @@ EXPECTED = {
         "gcr.io/google.com/cloudsdktool/google-cloud-cli",
     },
     "mise.azure.toml": {"azure-cli"},
+    "virtualized-e2e/lib/wiremock/deployment.yaml.tmpl": {"wiremock/wiremock"},
     "airgap/zarf.yaml": {
         "kubernetes-sigs/cluster-api",
         "kubernetes-sigs/cluster-api-addon-provider-helm",
