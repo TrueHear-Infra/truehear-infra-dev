@@ -17,8 +17,11 @@ OCI_TAG="${OCI_TAG:-latest}"
 OCI_URL="oci://${REGISTRY_HOST}:${REGISTRY_PORT}/${OCI_REPOSITORY}:${OCI_TAG}"
 OCI_MGMT_SOURCE_PATH="mgmt/local-host"
 OCI_WORKLOAD_SOURCE_PATH="workload/local-host"
+# workload/local-host composes ../base (the shared TrueHear application
+# layer), so base ships in the artifact too.
+OCI_WORKLOAD_BASE_PATH="workload/base"
 
-for source_path in "$OCI_MGMT_SOURCE_PATH" "$OCI_WORKLOAD_SOURCE_PATH"; do
+for source_path in "$OCI_MGMT_SOURCE_PATH" "$OCI_WORKLOAD_SOURCE_PATH" "$OCI_WORKLOAD_BASE_PATH"; do
   if [ ! -d "$source_path" ]; then
     echo "ERROR: OCI source directory does not exist: $source_path" >&2
     exit 1
@@ -45,8 +48,9 @@ trap cleanup_artifact_root EXIT
 mkdir -p "$ARTIFACT_ROOT/mgmt" "$ARTIFACT_ROOT/workload"
 cp -R "$OCI_MGMT_SOURCE_PATH" "$ARTIFACT_ROOT/mgmt/local-host"
 cp -R "$OCI_WORKLOAD_SOURCE_PATH" "$ARTIFACT_ROOT/workload/local-host"
+cp -R "$OCI_WORKLOAD_BASE_PATH" "$ARTIFACT_ROOT/workload/base"
 
-echo "==> Packaging mgmt/local-host and workload/local-host"
+echo "==> Packaging mgmt/local-host, workload/local-host and workload/base"
 echo "==> Pushing ${OCI_URL}"
 flux push artifact "$OCI_URL" \
   --path="$ARTIFACT_ROOT" \
@@ -104,4 +108,21 @@ echo "Podinfo will be available at http://localhost:9898"
 echo "Press Ctrl-C to stop forwarding."
 kubectl --kubeconfig "$KUBECONFIG_FILE" \
   port-forward --namespace podinfo service/podinfo 9898:9898
+'''
+
+[tasks.keycloak-port-forward]
+description = "Expose workload Keycloak at https://localhost:8443 (self-signed; admin password via: mise run sops-decrypt workload/base/keycloak/keycloak-bootstrap-admin.sops.yaml)"
+run = '''
+KUBECONFIG_FILE="${KUBECONFIG_FILE:-local-workload.kubeconfig}"
+if [ ! -f "$KUBECONFIG_FILE" ]; then
+  echo "ERROR: workload kubeconfig not found: $KUBECONFIG_FILE" >&2
+  echo "       Create it with: mise -E local-host run kubeconfigs" >&2
+  exit 1
+fi
+
+echo "Keycloak will be available at https://localhost:8443 (certificate is self-signed; SAN includes localhost)"
+echo "Admin console: https://localhost:8443/admin/  user: admin"
+echo "Press Ctrl-C to stop forwarding."
+kubectl --kubeconfig "$KUBECONFIG_FILE" \
+  port-forward --namespace keycloak service/keycloak 8443:443
 '''
