@@ -40,6 +40,7 @@ pub struct BootstrapSection {
     pub flux_namespace: String,
     pub github_pat_secret: String,
     pub sops_age_secret: String,
+    pub sops_age_resource_set: String,
     pub mgmt_namespace: String,
     pub mgmt_context: String,
 }
@@ -267,6 +268,7 @@ registry-name = "krops-registry"
 flux-namespace = "flux-system"
 github-pat-secret = "flux-github-pat"
 sops-age-secret = "sops-age"
+sops-age-resource-set = "sops-age-resource-set"
 mgmt-namespace = "default"
 mgmt-context = "krops-mgmt"
 

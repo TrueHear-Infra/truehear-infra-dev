@@ -93,6 +93,10 @@ teardown names against the Git manifests. Renovate updates the annotated chart
 pins together with their declarative counterparts. See
 [Dependencies](./dependencies.md).
 
+- `sops-age-resource-set` (`[bootstrap]`): name of the ClusterResourceSet
+  payload Secret carrying the workload clusters' `sops-age`. The bootstrap
+  plants it in the management namespace so every workload cluster's Flux can
+  decrypt `workload/**/*.sops.yaml` before reconciling.
 - `pivot-sops-secrets` (optional, list): SOPS-encrypted manifests the pivot
   decrypts with `SOPS_AGE_KEY_FILE` (defaults to `AGE_KEY_FILE`) and applies to
   the target before `clusterctl move`. Used by `azure` for the ASO/CAPZ
@@ -125,7 +129,7 @@ pins together with their declarative counterparts. See
 | `GIT_REPO_URL` | required for `aws` and `local-talos` | Management Flux Git source |
 | `GITHUB_TOKEN` | required for `aws` and `local-talos` | PAT with read access to the repository |
 | `GITHUB_USER` | `git` | Basic-auth username paired with the PAT |
-| `AGE_KEY_FILE` | `age.agekey` | SOPS age private key loaded into `sops-age` |
+| `AGE_KEY_FILE` | `age.agekey` | SOPS age private key; required for all environments (generated with `mise run sops-keygen` when absent); loaded into `sops-age` and `sops-age-resource-set` |
 | `AGE_PUBLIC_KEY` | derived from `AGE_KEY_FILE` | Public key override during secret creation; must match the key file's public key when both are known (preflight fails fast on a mismatch) |
 | `OCI_REPOSITORY` / `OCI_TAG` | `krops` / `latest` | Local-host OCI artifact name |
 | `BOOTSTRAP_PIVOT` | `1` | Any value other than literal `1` skips pivot |

@@ -22,6 +22,10 @@ registry-name = "krops-registry"
 flux-namespace = "flux-system"
 github-pat-secret = "flux-github-pat"
 sops-age-secret = "sops-age"
+# CRS-shaped wrapper of the same key in mgmt-namespace: the flux-apps
+# ClusterResourceSet applies it to every workload cluster so their Flux
+# can decrypt workload/**/*.sops.yaml.
+sops-age-resource-set = "sops-age-resource-set"
 mgmt-namespace = "default"
 mgmt-context = "krops-mgmt"
 

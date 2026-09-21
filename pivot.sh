@@ -95,6 +95,9 @@ pivot_preflight() {
       exit 1
     fi
   fi
+  # The age key is required for every environment (management Flux and the
+  # workload clusters' Flux both decrypt *.sops.yaml with it).
+  require_age_env
 }
 
 # ── Phase 0: wait for the management cluster definition ─────────────────────
