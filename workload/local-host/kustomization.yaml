@@ -1,6 +1,35 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 # Root reconciled by the FluxInstance running on the local CAPD workload
-# cluster.
+# cluster (synced from the krops OCI artifact, path workload/local-host).
+# Composes workload/base (the TrueHear application layer shared with every
+# environment) and adds what only the local cluster needs: Podinfo (the
+# original local-host demo app) and local-path-provisioner (no CSI on CAPD).
+# The base Flux Kustomizations name a GitRepository source; local-host syncs
+# from an OCIRepository, so the sourceRef kind is patched here. Both are
+# named flux-system by the FluxInstance.
 resources:
+  - ../base
   - podinfo
+  - local-path-storage/flux-ks.yaml
+patches:
+  - target:
+      group: kustomize.toolkit.fluxcd.io
+      kind: Kustomization
+      name: truehear-platform
+    patch: |
+      - op: replace
+        path: /spec/sourceRef/kind
+        value: OCIRepository
+  - target:
+      group: kustomize.toolkit.fluxcd.io
+      kind: Kustomization
+      name: keycloak
+    patch: |
+      - op: replace
+        path: /spec/sourceRef/kind
+        value: OCIRepository
+      - op: add
+        path: /spec/dependsOn/-
+        value:
+          name: local-path-storage

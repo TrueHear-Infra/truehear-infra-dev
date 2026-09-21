@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# rancher/local-path-provisioner, verbatim upstream release manifest
+# (deploy/local-path-storage.yaml). CAPD nodes ship no CSI driver; this gives
+# the workload cluster the `local-path` StorageClass the TrueHear PostgreSQL
+# PVC binds to (KEYCLOAK_STORAGE_CLASS default). Not a StorageClass the AWS,
+# Azure or GCP clusters need: they set KEYCLOAK_STORAGE_CLASS in cluster-vars.
+# local-path-provisioner-version: v0.0.37
+resources:
+  - local-path-storage.yaml
