@@ -43,6 +43,11 @@ if ! python3 airgap/tests/test-airgap-ownership.py; then
   echo "    FAILED: air-gap ownership invariant" >&2
   fail=1
 fi
+echo "==> air-gap workload overlay strip"
+if ! python3 airgap/tests/test-airgap-workload-overlay.py; then
+  echo "    FAILED: air-gap workload overlay strip" >&2
+  fail=1
+fi
 echo "==> toolbox-run.sh exec (image and CLI args reach the container engine)"
 if ! python3 tests/test-toolbox-run-exec.py; then
   echo "    FAILED: toolbox-run.sh exec" >&2

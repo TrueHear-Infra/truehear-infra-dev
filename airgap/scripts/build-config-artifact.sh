@@ -30,6 +30,22 @@ trap cleanup EXIT
 LH="$ARTIFACT_ROOT/mgmt/local-host"
 mkdir -p "$LH/clusters" "$LH/addons/cni" "$LH/addons/flux-apps" "$ARTIFACT_ROOT/workload"
 
+# The workload overlay composes workload/base (TrueHear apps on public
+# images) and local-path-provisioner; neither is pre-loaded in the gap.
+# The artifact keeps the podinfo-only root the offline deploy verifies.
+# strip_workload_base <artifact workload/local-host/kustomization.yaml>
+strip_workload_base() {
+  cat > "$1" <<'EOF'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Air-gap artifact variant (build-config-artifact.sh): podinfo only. The
+# checked-in workload/local-host also composes workload/base, whose images
+# are not part of the offline bundle.
+resources:
+  - podinfo
+EOF
+}
+
 # Verbatim copies: the cluster definition and the addon payloads.
 cp -R mgmt/local-host/clusters/docker "$LH/clusters/docker"
 cp mgmt/local-host/addons/cni/kindnet.yaml "$LH/addons/cni/kindnet.yaml"
@@ -220,6 +236,7 @@ rm -f "$LH/addons/flux-apps/flux-instance.yaml.bak"
 # insecure patch only covers the operator-generated sync source, not
 # tree-defined OCIRepositories. Everything else ships verbatim.
 cp -R workload/local-host "$ARTIFACT_ROOT/workload/local-host"
+strip_workload_base "$ARTIFACT_ROOT/workload/local-host/kustomization.yaml"
 python3 - "$ARTIFACT_ROOT/workload/local-host/podinfo/helm.yaml" <<'PY'
 import sys
 path = sys.argv[1]
