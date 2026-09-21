@@ -142,6 +142,9 @@ spec:
       name: flux-instance-eu-north-1
     - kind: Secret
       name: flux-pull-secret
+    # The age key the workload Flux uses to decrypt *.sops.yaml (planted by krops-bootstrap).
+    - kind: Secret
+      name: sops-age-resource-set
 ---
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
@@ -159,3 +162,6 @@ spec:
       name: flux-instance-eu-west-1
     - kind: Secret
       name: flux-pull-secret
+    # The age key the workload Flux uses to decrypt *.sops.yaml (planted by krops-bootstrap).
+    - kind: Secret
+      name: sops-age-resource-set

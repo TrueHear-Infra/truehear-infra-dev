@@ -62,3 +62,7 @@ spec:
   resources:
     - kind: ConfigMap
       name: local-workload-flux-instance
+    # Planted by krops-bootstrap (sops-age-resource-set in bootstrap.toml):
+    # the age key the workload Flux uses to decrypt workload/**/*.sops.yaml.
+    - kind: Secret
+      name: sops-age-resource-set

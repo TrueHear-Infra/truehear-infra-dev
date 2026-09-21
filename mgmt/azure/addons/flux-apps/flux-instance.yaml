@@ -80,3 +80,6 @@ spec:
       name: flux-instance-swedencentral
     - kind: Secret
       name: flux-pull-secret
+    # The age key the workload Flux uses to decrypt *.sops.yaml (planted by krops-bootstrap).
+    - kind: Secret
+      name: sops-age-resource-set
