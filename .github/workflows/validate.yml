@@ -109,6 +109,11 @@ jobs:
           done
           exit $fail
 
+      - name: Verify workload overlay invariants
+        env:
+          KUSTOMIZE: kustomize build
+        run: python3 tests/test-workload-overlays.py
+
   renovate-digest-pinning:
     name: Renovate airgap digest pinning
     runs-on: ubuntu-latest

@@ -113,6 +113,11 @@ if ! python3 tests/test-keycloak-secrets.py; then
   echo "    FAILED: keycloak secret generator" >&2
   fail=1
 fi
+echo "==> workload overlays (source kinds, defaults, encrypted secrets)"
+if ! python3 tests/test-workload-overlays.py; then
+  echo "    FAILED: workload overlays" >&2
+  fail=1
+fi
 echo "==> azure identity chain"
 if ! uv run python tests/test-azure-identity-chain.py; then
   echo "    FAILED: azure identity chain" >&2
