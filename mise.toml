@@ -26,7 +26,7 @@ env_file = ".env"
 description = "Check scripts and air-gap image pins, cross-check bootstrap config, and build every kustomize overlay"
 run = '''
 fail=0
-for script in bootstrap.sh bootstrap-common.sh pivot.sh teardown.sh scripts/toolbox-run.sh airgap/scripts/*.sh; do
+for script in bootstrap.sh bootstrap-common.sh pivot.sh teardown.sh scripts/toolbox-run.sh scripts/keycloak-secrets.sh airgap/scripts/*.sh; do
   echo "==> bash -n $script"
   if ! bash -n "$script"; then
     echo "    FAILED: $script" >&2
@@ -108,6 +108,11 @@ if ! python3 tests/test-cert-manager-version-consistency.py; then
   echo "    FAILED: cert-manager version consistency" >&2
   fail=1
 fi
+echo "==> keycloak secret generator"
+if ! python3 tests/test-keycloak-secrets.py; then
+  echo "    FAILED: keycloak secret generator" >&2
+  fail=1
+fi
 echo "==> azure identity chain"
 if ! uv run python tests/test-azure-identity-chain.py; then
   echo "    FAILED: azure identity chain" >&2
@@ -173,6 +178,10 @@ for f in $(find mgmt workload -name '*.sops.yaml'); do
   sops updatekeys --yes "$f"
 done
 """
+
+[tasks.keycloak-secrets]
+description = "Generate the four Keycloak Secrets under workload/base/keycloak as *.sops.yaml (usage: mise run keycloak-secrets [--force])"
+run = "scripts/keycloak-secrets.sh"
 
 [tasks.bootstrap]
 description = "Bootstrap the management kind cluster, hand off to Flux/GitOps, then pivot to the self-managed management cluster (toolbox container; native path: ./bootstrap.sh)"
