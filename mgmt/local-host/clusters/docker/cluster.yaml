@@ -25,4 +25,7 @@ spec:
       machineDeployments:
         - class: default-worker
           name: md-0
-          replicas: 1
+          # Three workers: the TrueHear Keycloak Deployment runs 2 replicas
+          # with hostname anti-affinity, and PostgreSQL + Flux + podinfo need
+          # room beside them. The management cluster stays at 1.
+          replicas: 3

@@ -418,7 +418,7 @@ has no standard ready condition)
 
 The `local-host` environment replaces AWS with local Docker containers (CAPD)
 and GitHub with a local in-memory OCI registry (`krops-registry:5000`). It
-provisions a one-control-plane/one-worker workload cluster and reconciles the
+provisions a one-control-plane/three-worker workload cluster and reconciles the
 Podinfo demo application end to end on a single host.
 
 See the architecture diagram in [docs/local-host-infra.svg](local-host-infra.svg).
@@ -460,7 +460,7 @@ flowchart TD
 
     subgraph wl["Workload cluster local-workload (Docker containers)"]
         CP[1 Control Plane container]
-        WORKER[1 Worker container]
+        WORKER[3 Worker containers]
         WF["Flux (syncs workload/local-host from OCI)"]
         APP["podinfo demo application<br/>port-forward to localhost:9898"]
         WF --> APP

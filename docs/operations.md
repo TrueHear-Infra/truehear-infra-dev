@@ -345,7 +345,7 @@ publishes the `mgmt/local-host/` and `workload/local-host/` folders as the
 initial `krops:latest` OCI
 artifact, and configures Flux to reconcile that path from the artifact. Flux
 then installs the CAPI core, kubeadm, and Docker infrastructure providers and
-creates `local-workload`, a one-control-plane/one-worker Kubernetes cluster in
+creates `local-workload`, a one-control-plane/three-worker Kubernetes cluster in
 containers. The management cluster then installs a Flux Operator and
 FluxInstance on `local-workload`; that instance reconciles
 `workload/local-host/` from the same OCI artifact. CAPD is intended for local

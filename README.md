@@ -244,7 +244,7 @@ kind cluster, a local OCI registry, and the Flux Operator and FluxInstance. It
 publishes the `mgmt/local-host/` and `workload/local-host/` folders as the
 `krops:latest` OCI artifact, and Flux syncs from that artifact (not GitHub).
 Flux installs CAPI with its Docker provider (CAPD), provisions a
-one-control-plane/one-worker workload cluster, and installs a separate Flux
+one-control-plane/three-worker workload cluster, and installs a separate Flux
 instance there. That workload Flux instance reconciles Podinfo, giving a
 complete local path from management bootstrap through workload delivery and
 application access, with no GitHub or AWS credentials.
