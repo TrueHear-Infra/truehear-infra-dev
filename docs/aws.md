@@ -130,8 +130,7 @@ konflate (no dependencies)
 Workload clusters (`workload/<region>-01/`):
 
 ```
-(empty: workload/base reconciles nothing since issue #346; the per-cluster
-Flux instance stays installed, ready for a future application workload)
+truehear-platform ─▶ keycloak (Keycloak + PostgreSQL, SOPS Secrets)
 ```
 
 ## Upgrading CAPA

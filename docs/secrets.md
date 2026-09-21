@@ -19,6 +19,10 @@ with `spec.decryption.provider: sops`):
 | `mgmt/aws/infrastructure/ack-controllers/aws-credentials.sops.yaml` | `ack-controllers` | ACK IAM/EKS controller AWS credentials (shared-credentials-file format) |
 | `mgmt/aws/addons/flux-apps/flux-pull-secret.sops.yaml` | `flux-apps` | GitHub PAT pull secret (basic auth), delivered to each workload cluster via ClusterResourceSet so its Flux can clone this (private) repo |
 | `mgmt/aws/infrastructure/konflate/konflate-token.sops.yaml` | `konflate` | `KONFLATE_TOKEN` (read-only GitHub PAT so konflate can list PRs and clone this private repo) and `KONFLATE_WRITE_TOKEN` (write-back credential konflate uses to post the PR summary comment and the `Konflate` commit status) |
+| `workload/base/keycloak/keycloak-postgresql-credentials.sops.yaml` | `keycloak` (workload clusters) | PostgreSQL `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` for the Keycloak database (shared by the StatefulSet and the Deployment) |
+| `workload/base/keycloak/keycloak-bootstrap-admin.sops.yaml` | `keycloak` (workload clusters) | Keycloak admin `ADMIN_USER`/`ADMIN_PASSWORD` consumed by the deployment's bootstrap init container |
+| `workload/base/keycloak/keycloak-postgresql-tls.sops.yaml` | `keycloak` (workload clusters) | PostgreSQL server/cert/client CA TLS material (`tls.crt`/`tls.key`/`ca.crt`) for the scram+TLS database connection |
+| `workload/base/keycloak/keycloak-tls.sops.yaml` | `keycloak` (workload clusters) | Keycloak HTTPS `tls.crt`/`tls.key` served by the deployment's HTTPS container port |
 
 ## First-time setup
 
@@ -130,3 +134,16 @@ mise run sops-encrypt mgmt/aws/infrastructure/konflate/konflate-token.sops.yaml
 Keep the two tokens separate: the read token (`KONFLATE_TOKEN`) should carry
 no write scope, and the write token is used only for konflate's write-back
 (the PR summary comment and the `Konflate` commit status).
+
+## Workload clusters
+
+The `workload/base/keycloak/*.sops.yaml` Secrets are decrypted on each workload
+cluster, not the management cluster. Each workload cluster receives the same
+age key as the management cluster: krops-bootstrap plants
+`sops-age-resource-set` (a ClusterResourceSet payload) in the management
+cluster's `default` namespace and `mgmt/<env>/addons/flux-apps` applies it as
+`flux-system/sops-age` on every cluster labelled `fluxcd: enabled`. Rotate by
+regenerating `age.agekey`, updating `.sops.yaml`, running
+`mise run sops-updatekeys` and re-running the bootstrap/pivot (the Secret is
+delete-then-apply on the management side; the CRS is `ApplyOnce`, so delete
+`flux-system/sops-age` on each workload cluster to have it re-applied).

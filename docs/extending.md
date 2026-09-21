@@ -22,18 +22,27 @@
 
 ## Adding apps to the workload clusters
 
-`workload/base/` is an intentionally empty overlay since issue #346 (the ACK
-controllers and their CRs moved to the management cluster). Follow the
-Podinfo pattern in `workload/local-host/`:
+`workload/base/` carries the TrueHear application layer (`truehear-platform/`,
+`keycloak/`); every `workload/<cluster>/` overlay composes it. To add an app:
 
 1. Create `workload/base/<app>/` with a `kustomization.yaml` listing the app's
-   manifests, and a `flux-ks.yaml` defining the Flux `Kustomization`
-   (path `./workload/base/<app>`; add `dependsOn` and `wait: true` as needed;
-   use `postBuild.substituteFrom: cluster-vars` for per-cluster values like
-   `${AWS_REGION}` and `${CLUSTER_NAME}`).
+   manifests and a `flux-ks.yaml` defining the Flux `Kustomization`
+   (path `./workload/base/<app>`, `sourceRef.kind: GitRepository`; add
+   `dependsOn` and `wait: true` as needed; per-cluster values as
+   `${VAR:=default}` with `postBuild.substituteStrategy: Always` and
+   `substituteFrom: cluster-vars` marked `optional: true`, so clusters without
+   the ConfigMap still render).
 2. Register the `flux-ks.yaml` in `workload/base/kustomization.yaml`.
-3. Run `mise run validate`, commit, and push. Every workload cluster picks it
-   up on its next sync.
+3. In `workload/local-host/kustomization.yaml`, add a patch switching the new
+   Kustomization's `sourceRef.kind` to `OCIRepository` (local-host syncs from
+   the local registry); `tests/test-workload-overlays.py` fails until you do.
+4. Secrets: write them as `<name>.sops.yaml`, encrypt with
+   `mise run sops-encrypt <file>`, and give the Flux Kustomization
+   `decryption.provider: sops` with `secretRef.name: sops-age` (every
+   workload cluster receives that Secret through its flux-apps
+   ClusterResourceSet).
+5. Run `mise run validate`, commit, and push. Every workload cluster picks it
+   up on its next sync; for local-host run `mise -E local-host run oci-push`.
 
 ## Using other providers
 

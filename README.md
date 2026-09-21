@@ -156,7 +156,7 @@ layers its own tools and tasks in a `mise.<env>.toml`.
 | `aws` | EKS `eu-north-1-management` | CAPA | ACK (S3, RDS, IAM) | GitHub |
 | `azure` | AKS `swedencentral-management` | CAPZ (bundles ASO) | Azure Service Operator | GitHub |
 | `gcp` | GKE `europe-north1-management` | CAPG | Config Connector | GitHub |
-| `local-host` | CAPD `local-management` (Docker) | CAPD | Flux + Podinfo | local OCI registry |
+| `local-host` | CAPD `local-management` (Docker) | CAPD | Flux + Podinfo + TrueHear apps | local OCI registry |
 | `local-talos` | single-node Talos on bare metal | CAPT + CABPT + CACPPT | none (management-only) | GitHub |
 
 Each environment has its own reference page; the ones below summarize it and
@@ -330,6 +330,7 @@ teardown controls, toolbox release, and current parity status.
 | [docs/wiremock-e2e-spike-findings-gcp.md](docs/wiremock-e2e-spike-findings-gcp.md) | WireMock e2e Phase 0 spike findings (GCP): REST and gRPC both interceptable via CoreDNS rewrite + SAN certs; HTTPS_PROXY covers REST only; CAPG v1.13.1 `serviceEndpoints` covers REST compute only |
 | [docs/aws-iam.md](docs/aws-iam.md) | Management-cluster ACK controllers (static SOPS credentials, union scope), per-cluster reader roles, the `krops-reader` console user |
 | [docs/workload-resources.md](docs/workload-resources.md) | S3 bucket security posture, RDS instances, known limitations |
+| [docs/truehear.md](docs/truehear.md) | The workload application layer mirrored from TrueHear dev, its variables, and what is not ported |
 | [docs/konflate.md](docs/konflate.md) | Rendered Flux PR review: GitHub Actions gate, in-cluster instance, write-back to PRs, tokens |
 | [docs/secrets.md](docs/secrets.md) | SOPS + age secret management, key setup, credential rotation |
 | [docs/operations.md](docs/operations.md) | Toolbox runtime, prerequisites, quotas, bootstrap, pivot recovery, teardown, validation |
@@ -392,15 +393,17 @@ teardown controls, toolbox release, and current parity status.
 ├── mgmt/gcp/                      GKE management cluster (CAPG + Config
 │   │                              Connector operator + WIF identities)
 └── workload/                     Synced by each WORKLOAD cluster's Flux
-    ├── base/                     Intentionally empty since #346 (ACK moved
-    │                              to the management cluster); ready for a
-    │                              future application workload
+    ├── base/                     TrueHear application layer shared by every
+    │                              workload cluster (truehear-platform,
+    │                              keycloak); per-cluster values via
+    │                              cluster-vars
     ├── azure-base/               cert-manager, ASO, and the Azure workload
     │                              resources (VNet, storage, PostgreSQL)
     ├── gcp-base/                 KCC operator + ConfigConnector, PSA range,
     │                              storage bucket, Cloud SQL, per-cluster
     │                              reader GSA
-    ├── local-host/               OCI-synced Podinfo workload overlay
+    ├── local-host/               OCI-synced overlay composing ../base, plus
+    │                              Podinfo and local-path-provisioner
     ├── eu-north-01/              Per-cluster overlay (sync target)
     ├── eu-west-01/               Per-cluster overlay (sync target)
     ├── swedencentral-01/         Per-cluster overlay -> azure-base

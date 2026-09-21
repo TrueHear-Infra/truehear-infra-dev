@@ -150,8 +150,7 @@ write-back, UI access): [PR review: konflate](./konflate.md).
 ### Reconciliation order (AWS workload clusters)
 
 ```
-(empty: workload/base reconciles nothing since issue #346; the per-cluster
-Flux instance stays installed, ready for a future application workload)
+truehear-platform ─▶ keycloak (Keycloak + PostgreSQL, SOPS Secrets)
 ```
 
 ### How workload apps are delivered (AWS)
@@ -165,12 +164,10 @@ Flux instance stays installed, ready for a future application workload)
    `postBuild` substitution channel for a future workload), and the Git pull
    secret.
 3. The workload cluster's Flux reconciles `workload/`, whose `base/` overlay
-   is intentionally empty since issue #346: the ACK controllers and the
-   Bucket / DBInstance / reader Role CRs moved to the management cluster
-   (`mgmt/aws/infrastructure/ack-controllers/` and
-   `mgmt/aws/infrastructure/workload-resources/`). The instance reconciles
-   nothing today but is ready for a future application workload (the
-   local-host Podinfo pattern).
+   holds the TrueHear application layer (see [TrueHear
+   applications](./truehear.md)); the ACK controllers and the Bucket /
+   DBInstance / reader Role CRs live on the management cluster since issue
+   #346.
 
 See [AWS authentication & IAM](./aws-iam.md) for how the ACK controllers
 authenticate, and [Workload resources](./workload-resources.md) for what they
@@ -482,7 +479,9 @@ cert-manager ▶ capi-operator ▶ capi-system ▶ capd-system ▶ clusters (loc
 
 Workload cluster:
 ```
-podinfo (HelmRelease reconciled by local workload Flux from OCI artifact)
+local-path-storage ─┐
+truehear-platform ──┴▶ keycloak (Keycloak + PostgreSQL, SOPS Secrets)
+podinfo
 ```
 
 ## Bare-metal Talos environment (local-talos)

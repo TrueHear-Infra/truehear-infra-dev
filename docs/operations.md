@@ -338,18 +338,22 @@ ACK controllers, IAM roles, and S3 buckets) reconciles
 from Git with no further manual steps.
 
 The local-host environment performs the cluster, Flux Operator, and FluxInstance
-steps in the `mgmt` management cluster, but does not create GitHub or SOPS
-secrets. Instead, it bootstraps a local Docker Registry container (`registry:2`)
+steps in the `mgmt` management cluster, but does not create a GitHub secret.
+It does create the SOPS age secrets (`sops-age` and the `sops-age-resource-set`
+ClusterResourceSet payload) for every environment. Instead of a Git source it
+bootstraps a local Docker Registry container (`registry:2`)
 running on the host machine (accessible at `localhost:5001` by default),
-publishes the `mgmt/local-host/` and `workload/local-host/` folders as the
-initial `krops:latest` OCI
+publishes the `mgmt/local-host/`, `workload/local-host/`, and
+`workload/base/` folders as the initial `krops:latest` OCI
 artifact, and configures Flux to reconcile that path from the artifact. Flux
 then installs the CAPI core, kubeadm, and Docker infrastructure providers and
 creates `local-workload`, a one-control-plane/three-worker Kubernetes cluster in
 containers. The management cluster then installs a Flux Operator and
 FluxInstance on `local-workload`; that instance reconciles
-`workload/local-host/` from the same OCI artifact. CAPD is intended for local
-development and testing, not production.
+`workload/local-host/` from the same OCI artifact, which now composes
+`workload/base/` (the TrueHear application layer; `oci-push` packages both).
+Expose Keycloak with `mise -E local-host run keycloak-port-forward`. CAPD is
+intended for local development and testing, not production.
 
 Together, these stages make `local-host` an end-to-end environment: one command
 bootstraps the management control plane, publishes and reconciles the OCI
@@ -392,7 +396,8 @@ OCI_REPOSITORY=my-config OCI_TAG=v1 \
 # registry's in-cluster endpoint, krops-registry:5000.
 ```
 
-The artifact contains only `mgmt/local-host/` and `workload/local-host/`,
+The artifact contains only `mgmt/local-host/`, `workload/local-host/`, and
+`workload/base/`,
 preserving those directory paths when the artifact is pulled. Keeping the
 source scope narrow also prevents local credentials and age private keys
 elsewhere in the repository from being packaged.

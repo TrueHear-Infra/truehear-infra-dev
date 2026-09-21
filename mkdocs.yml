@@ -78,6 +78,7 @@ nav:
   - AWS environment: aws.md
   - Azure environment: azure.md
   - GCP environment: gcp.md
+  - TrueHear applications: truehear.md
   - AWS authentication and IAM: aws-iam.md
   - Workload resources: workload-resources.md
   - PR review with konflate: konflate.md
