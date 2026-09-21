@@ -15,5 +15,9 @@ resources:
   - services/keycloak/postgresql
   - services/keycloak/application
   - keycloak-configuration.yaml
+  - keycloak-postgresql-credentials.sops.yaml
+  - keycloak-bootstrap-admin.sops.yaml
+  - keycloak-postgresql-tls.sops.yaml
+  - keycloak-tls.sops.yaml
 patches:
   - path: postgresql-storage.patch.yaml
