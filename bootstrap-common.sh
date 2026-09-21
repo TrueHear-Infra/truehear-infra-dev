@@ -24,7 +24,7 @@ require_flux_env() {
   GITHUB_REPO="${GIT_REPO_URL#https://github.com/}"
   GITHUB_REPO="${GITHUB_REPO%/}"
   GITHUB_REPO="${GITHUB_REPO%.git}"
-  GITHUB_AUTH="Authorization: Bearer ${GITH…KEN}"
+  GITHUB_AUTH="Authorization: Bearer ${GITHUB_TOKEN}"
   github_branch_path="${GIT_BRANCH//\//%2F}"
   github_branch_status="$(curl -sS -o /dev/null -w '%{http_code}' \
     -H 'Accept: application/vnd.github+json' \
