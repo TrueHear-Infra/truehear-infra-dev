@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# TrueHear platform namespaces and ServiceAccounts, mirrored from
+# TrueHear/truehear-cloud-development kubernetes/environments/dev/{backend,
+# vault,rabbitmq,redis}: each of those overlays renders only
+# services/<svc>/base (Namespace + ServiceAccount) plus the environment
+# label. The Vault, RabbitMQ and Redis workloads themselves are installed
+# out of band upstream and are not part of this component.
+#
+# services/<svc>/base/ is byte-identical to the upstream path of the same
+# name (kubernetes/services/<svc>/base/) so the fork can diff against
+# upstream path-for-path.
+resources:
+  - services/backend/base
+  - services/vault/base
+  - services/rabbitmq/base
+  - services/redis/base
+labels:
+  - pairs:
+      # Substituted by Flux postBuild (flux-ks.yaml) from cluster-vars.
+      truehear.io/environment: ${TRUEHEAR_ENVIRONMENT:=dev}

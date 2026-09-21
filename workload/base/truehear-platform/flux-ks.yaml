@@ -1,0 +1,29 @@
+---
+# ══════════════════════════════════════════════════════════════════════════════
+# Flux Kustomization: the TrueHear platform namespaces and ServiceAccounts.
+# wait: true so keycloak (dependsOn this) only starts once the namespaces
+# exist. substituteStrategy: Always so the ${VAR:=default} placeholders
+# render on clusters that ship no cluster-vars ConfigMap (local-host); the
+# ConfigMap is optional for the same reason.
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: truehear-platform
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 2m
+  timeout: 5m
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./workload/base/truehear-platform
+  postBuild:
+    substituteStrategy: Always
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars
+        optional: true
