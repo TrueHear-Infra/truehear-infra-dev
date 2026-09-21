@@ -33,6 +33,9 @@ preflight_checks() {
   if [ "$PROFILE" = aws ]; then
     require_flux_env
   fi
+  # The age key is required for every environment (management Flux and the
+  # workload clusters' Flux both decrypt *.sops.yaml with it).
+  require_age_env
 
   detect_container_engine
 }

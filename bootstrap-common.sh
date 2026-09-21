@@ -6,8 +6,8 @@
 # sourcing shell (bash 3.2 compatible: no namerefs, no associative arrays).
 
 # ── Preflight: environment (aws) ──────────────────────────────────────────────
-# Validates the GitHub + age inputs the Flux seed needs on the aws environment.
-# Sets: GITHUB_USER, GITHUB_REPO, AGE_KEY_FILE, AGE_PUBKEY.
+# Validates the GitHub inputs the Flux seed needs on the aws environment.
+# Sets: GITHUB_USER, GITHUB_REPO.
 require_flux_env() {
   : "${GITHUB_TOKEN:?GITHUB_TOKEN must be set (a PAT with read access to the repo)}"
   : "${GIT_REPO_URL:?GIT_REPO_URL must be set}"
@@ -24,7 +24,7 @@ require_flux_env() {
   GITHUB_REPO="${GIT_REPO_URL#https://github.com/}"
   GITHUB_REPO="${GITHUB_REPO%/}"
   GITHUB_REPO="${GITHUB_REPO%.git}"
-  GITHUB_AUTH="Authorization: Bearer ${GITHUB_TOKEN}"
+  GITHUB_AUTH="Authorization: Bearer ${GITH…KEN}"
   github_branch_path="${GIT_BRANCH//\//%2F}"
   github_branch_status="$(curl -sS -o /dev/null -w '%{http_code}' \
     -H 'Accept: application/vnd.github+json' \
@@ -34,7 +34,13 @@ require_flux_env() {
     echo "ERROR: GitHub repository or branch '${GIT_BRANCH}' is unavailable at '${GIT_REPO_URL}' (HTTP ${github_branch_status})" >&2
     exit 1
   fi
+}
 
+# ── Preflight: age key (every environment) ────────────────────────────────────
+# Validates the SOPS age private key every environment needs (management Flux
+# and the workload clusters' Flux both decrypt *.sops.yaml with it).
+# Sets: AGE_KEY_FILE, AGE_PUBKEY.
+require_age_env() {
   AGE_KEY_FILE="${AGE_KEY_FILE:-age.agekey}"
   if [ ! -f "$AGE_KEY_FILE" ]; then
     echo "ERROR: age key file not found at '$AGE_KEY_FILE'." >&2
@@ -181,21 +187,31 @@ seed_flux() {
       --from-literal=username="${GITHUB_USER}" \
       --from-literal=password="${GITHUB_TOKEN}" \
       --dry-run=client -o yaml | seed_kubectl apply -f -
-
-    # ── SOPS age decryption key secret ────────────────────────────────────────
-    # Flux's kustomize-controller uses this key to decrypt *.sops.yaml manifests
-    # (such as the CAPA AWS credentials) during reconciliation. Flux scans the
-    # Secret for keys matching the pattern `keys.<public-key>.agekey` — each
-    # matching key is passed to the age library for decryption.
-    # Delete first: kubectl apply merges stringData keys, which would leave
-    # stale keys from a previous bootstrap with a different age key behind.
-    echo ">>> Creating sops-age decryption secret in flux-system..."
-    seed_kubectl delete secret sops-age -n flux-system --ignore-not-found
-    seed_kubectl create secret generic sops-age \
-      --namespace flux-system \
-      --from-file="keys.${AGE_PUBKEY}.agekey=${AGE_KEY_FILE}" \
-      --dry-run=client -o yaml | seed_kubectl apply -f -
   fi
+
+  # ── SOPS age decryption key secret (every environment) ─────────────────────
+  # Flux's kustomize-controller uses this key to decrypt *.sops.yaml manifests
+  # during reconciliation. Flux scans the Secret for keys matching the pattern
+  # `keys.<public-key>.agekey` — each matching key is passed to the age library
+  # for decryption.
+  # Delete first: kubectl apply merges stringData keys, which would leave
+  # stale keys from a previous bootstrap with a different age key behind.
+  echo ">>> Creating sops-age decryption secret in flux-system..."
+  seed_kubectl delete secret sops-age -n flux-system --ignore-not-found
+  seed_kubectl create secret generic sops-age \
+    --namespace flux-system \
+    --from-file="keys.${AGE_PUBKEY}.agekey=${AGE_KEY_FILE}" \
+    --dry-run=client -o yaml | seed_kubectl apply -f -
+
+  # ── sops-age for the workload clusters (ClusterResourceSet payload) ───────
+  echo ">>> Creating sops-age-resource-set in default..."
+  seed_kubectl create secret generic sops-age -n flux-system \
+    --from-file="keys.${AGE_PUBKEY}.agekey=${AGE_KEY_FILE}" --dry-run=client -o yaml > "$anon_registry_config.sops-age.yaml"
+  seed_register_cleanup "$anon_registry_config.sops-age.yaml"
+  seed_kubectl create secret generic sops-age-resource-set -n default \
+    --type=addons.cluster.x-k8s.io/resource-set \
+    --from-file="sops-age.yaml=$anon_registry_config.sops-age.yaml" \
+    --dry-run=client -o yaml | seed_kubectl apply -f -
 
   # ── Install the FluxInstance via Helm ───────────────────────────────────────
   echo ">>> Installing FluxInstance via Helm..."
