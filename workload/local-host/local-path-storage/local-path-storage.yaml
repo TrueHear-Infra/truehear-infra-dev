@@ -182,5 +182,7 @@ data:
           effect: NoSchedule
       containers:
       - name: helper-pod
-        image: docker.io/library/busybox
+        # Digest-pinned 1.37.0 multi-arch (amd64+arm64; CAPD runs on both);
+        # renovate (pinDigests) maintains it like every other image here.
+        image: docker.io/library/busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0
         imagePullPolicy: IfNotPresent
