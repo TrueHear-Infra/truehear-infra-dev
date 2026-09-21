@@ -134,9 +134,11 @@ resources. There is no app source code here, only declarative infrastructure.
   arm per cloud with only what differs (interception patches, boot stubs,
   arm README). `aws/` is the reference arm; `azure/` adds the second arm
   (ASO endpoint configuration via `aso-controller-settings`, plus a
-  CoreDNS rewrite covering CAPZ and MSAL instance discovery); the GCP
-  arm is a follow-up. The kustomize overlays here are built by `mise run validate`
-  like the `mgmt`/`workload` ones.
+  CoreDNS rewrite covering CAPZ and MSAL instance discovery); `gcp/`
+  mirrors the reference with the CoreDNS-rewrite + SAN-cert interception
+  and WIF credential repoint from its Phase 0 spike. The kustomize
+  overlays here are built by `mise run validate` like the `mgmt`/`workload`
+  ones.
 - `bootstrap-rs/`: `krops-bootstrap`, the Rust CLI that ports the imperative
   lifecycle (bootstrap + pivot; teardown under issue #100). Behavioral port:
   same step order, messages, and env interface as the scripts, plus
