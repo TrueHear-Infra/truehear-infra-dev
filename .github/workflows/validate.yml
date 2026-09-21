@@ -106,6 +106,9 @@ jobs:
           done
           exit $fail
 
+      - name: "Guard: no ACK CRs under workload/ (#411)"
+        run: python3 tests/test-ack-cr-placement.py
+
   renovate-digest-pinning:
     name: Renovate airgap digest pinning
     runs-on: ubuntu-latest
@@ -198,6 +201,9 @@ jobs:
 
       - name: KCC operator pin cross-check
         run: python3 tests/test-kcc-operator-pin.py
+
+      - name: ACK CR scope vs documented principal (#411)
+        run: python3 tests/test-aws-iam-doc-scope.py
 
   python-lint:
     name: Lint Python (ruff)
