@@ -168,7 +168,7 @@ run = "sops --decrypt --input-type yaml --output-type yaml"
 [tasks.sops-updatekeys]
 description = "Re-encrypt all *.sops.yaml files to match recipients in .sops.yaml"
 run = """
-for f in $(find mgmt -name '*.sops.yaml'); do
+for f in $(find mgmt workload -name '*.sops.yaml'); do
   echo "==> updatekeys $f"
   sops updatekeys --yes "$f"
 done
