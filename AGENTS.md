@@ -167,6 +167,9 @@ resources. There is no app source code here, only declarative infrastructure.
 - `docs/`: detailed documentation (see the table in README.md).
   `docs/proposals/` holds design proposals under review (not yet decided or
   implemented); the docs site assembler includes that folder.
+- `run-book-practice-logs/`: operator learning logs. Its README records the
+  verified local-host bootstrap, Flux update, troubleshooting, and teardown
+  exercise.
 - `mise.toml`: pinned tool versions and all task entrypoints.
   `mise.aws.toml` is the AWS tool layer (aws-cli, clusterawsadm),
   activated with `MISE_ENV=aws`. `mise.azure.toml` (azure-cli) and

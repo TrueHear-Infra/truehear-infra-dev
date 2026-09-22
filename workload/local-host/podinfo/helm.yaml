@@ -23,6 +23,6 @@ spec:
   install:
     createNamespace: false
   values:
-    replicaCount: 1
+    replicaCount: 2
     service:
       type: ClusterIP
