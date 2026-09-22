@@ -1,0 +1,47 @@
+# Environment-neutral chart defaults. The dev overlay supplies the concrete
+# name pinned in the issued Redis certificate.
+fullnameOverride: ''
+
+replicaCount: null
+
+# Highest-to-lowest StatefulSet rolling updates can be staged by partition.
+# Zero updates all Pods; a value equal to replicaCount pauses all updates.
+rollout:
+  partition: 0
+
+image:
+  repository: docker.io/library/redis
+  tag: 8.2.9-bookworm
+  pullPolicy: IfNotPresent
+
+service:
+  redisPort: 6379
+  clusterBusPort: 16379
+
+tls:
+  secretName: redis-tls
+
+# The Secret is created outside Helm; never put a password in values files.
+auth:
+  secretName: redis-auth
+  secretKey: redis-auth.conf
+
+# Optional application ACL users. Create the Secret outside Helm with hashed
+# password rules, then enable this block in the environment values file.
+# A Secret update alone does not reload ACLs. A staged Helm upgrade binds its
+# resourceVersion to the Pod template and restarts one Pod at a time.
+acl:
+  enabled: false
+  secretName: redis-backend-acl
+  secretKey: users.conf
+
+persistence:
+  storageClassName: ''
+  size: 10Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi

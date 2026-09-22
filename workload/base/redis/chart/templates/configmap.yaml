@@ -1,0 +1,40 @@
+{{- $name := include "truehear-redis.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "truehear-redis.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: truehear-platform
+data:
+  redis.conf: |
+    # No plaintext Redis listener. Node-to-node links use TLS as well.
+    port 0
+    tls-port {{ .Values.service.redisPort }}
+    tls-cert-file /etc/redis/tls/tls.crt
+    tls-key-file /etc/redis/tls/tls.key
+    tls-ca-cert-file /etc/redis/tls/ca.crt
+    tls-auth-clients no
+    tls-replication yes
+    tls-cluster yes
+
+    cluster-enabled yes
+    cluster-config-file /data/nodes.conf
+    cluster-node-timeout 5000
+    cluster-port {{ .Values.service.clusterBusPort }}
+    cluster-preferred-endpoint-type hostname
+
+    dir /data
+    appendonly yes
+    protected-mode yes
+
+    # This required Secret must supply requirepass and masterauth. No password
+    # belongs in a ConfigMap, chart values, or the rendered Helm release.
+    include /etc/redis/auth/redis-auth.conf
+{{- if .Values.acl.enabled }}
+
+    # Additional application users come from a separately managed Secret.
+    include /etc/redis/acl/users.conf
+{{- end }}
