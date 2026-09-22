@@ -1,0 +1,21 @@
+{{- $replicas := required "Set replicaCount in the environment values file" .Values.replicaCount -}}
+{{- if lt (int $replicas) 3 -}}
+{{- fail "RabbitMQ requires at least three members for the reviewed quorum topology" -}}
+{{- end -}}
+{{- if eq (mod (int $replicas) 2) 0 -}}
+{{- fail "Use an odd RabbitMQ member count for the reviewed quorum topology" -}}
+{{- end -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "truehear-rabbitmq.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "truehear-rabbitmq.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: truehear-platform
+spec:
+  minAvailable: {{ add (div (int $replicas) 2) 1 }}
+  selector:
+    matchLabels:
+      {{- include "truehear-rabbitmq.selectorLabels" . | nindent 6 }}

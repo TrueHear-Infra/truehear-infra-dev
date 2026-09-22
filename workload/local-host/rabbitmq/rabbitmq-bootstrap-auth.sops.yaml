@@ -1,0 +1,23 @@
+apiVersion: v1
+data:
+    password: ENC[AES256_GCM,data:SGOdDyZgfUA=,iv:IGwc45fd1bEitg+ANtBPuU3JP7+/cH2Dv+kTr76O0FY=,tag:kDkG1i0k+g3Z5bk6jRViEw==,type:str]
+    username: ENC[AES256_GCM,data:Mz6gbplor/Q=,iv:3+e5642wBng98oaGI7VvcZGSsPvFQimHQNlfk+wXEvU=,tag:vZoYKxt3Q0hN2xgUwCPZ0w==,type:str]
+kind: Secret
+metadata:
+    name: rabbitmq-bootstrap-auth
+    namespace: rabbitmq
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBYUloraXQyVTVjaURjVXgz
+            NGpDaHFxZS9qUDhlS2Fhd0tNSk80MjZWUUNrCmgwZCtMemhqMEVFcm5VdmErbXVp
+            bnYwVlIrUTEzeVF4aHJtcTh4UDNQV2cKLS0tIGRVWU5vTkxXU3BWdFpkQmRkY2dq
+            M0s1M1ZhcXlENDdvUldwYnhDbkVzQUkKIQaTtoTaUnBpJkYDmdQENBnKhh+F2tlA
+            +jBkHxmBsatf0z0d72GhpOyciMoGh5ic/YONXOVSMc98bgbds7g/RA==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1rnpytnyvs6r8wcf740tp47wjkcqap6szqnapewuhw3vnytelvcvqwgmv0h
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-09-22T22:13:28Z"
+    mac: ENC[AES256_GCM,data:9qZ7ssCjBtLp85UowaAX1BFz3vyp3mhW0OxhxaG7GaDk8d9NUyIqKmkal6sIylAIbGpzh/luPS8K33UK5N6h0aHrzEmD8cOIDmXPQDs1NYOlVeFql81aT7ghLwzECahULFmacfjpbSNEupBV/pR+EfhL76XuDUsLdNbRfsPEn+0=,iv:qEA4/6fH6NlVPlVJmtrv5xqiHnCVCQczkXnCYjGCvOs=,tag:8j9e/jFet/z0gj3rTiOylw==,type:str]
+    version: 3.13.3

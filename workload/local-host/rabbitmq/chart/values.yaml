@@ -1,0 +1,55 @@
+# Environment-neutral values. The environment file fixes names, topology,
+# storage and the initial vhost before this chart is installed.
+fullnameOverride: ''
+replicaCount: null
+
+image:
+  repository: docker.io/library/rabbitmq
+  tag: 4.2.9-management
+  pullPolicy: IfNotPresent
+
+service:
+  amqpsPort: 5671
+  managementTlsPort: 15671
+  epmdPort: 4369
+  distributionPort: 25672
+
+# Provision these Secrets outside Helm. Never put their values in this file.
+tls:
+  secretName: rabbitmq-tls
+cookie:
+  secretName: rabbitmq-erlang-cookie
+  secretKey: erlang-cookie
+bootstrapAuth:
+  secretName: rabbitmq-bootstrap-auth
+  usernameKey: username
+  passwordKey: password
+
+# Human sign-in to the private management UI. Keep disabled until the matching
+# Keycloak public client, audience mapper, and RabbitMQ permissions exist.
+# This does not replace the separate backend AMQP username/password.
+oidc:
+  enabled: false
+  issuer: ''
+  resourceServerId: ''
+  clientId: ''
+  scopes: 'openid profile'
+  additionalScopesKey: realm_access.roles
+
+vhost: ''
+
+persistence:
+  storageClassName: ''
+  size: 10Gi
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    memory: 1Gi
+
+# Cloud environments keep this enabled so replicas land on separate workers.
+# The local-host HelmRelease disables it because CAPD has one workload worker.
+scheduling:
+  requireDistinctNodes: true

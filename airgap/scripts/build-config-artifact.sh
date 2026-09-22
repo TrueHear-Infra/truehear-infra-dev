@@ -28,13 +28,16 @@ cleanup() { rm -rf "$ARTIFACT_ROOT"; }
 trap cleanup EXIT
 
 LH="$ARTIFACT_ROOT/mgmt/local-host"
-mkdir -p "$LH/clusters" "$LH/addons/cni" "$LH/addons/flux-apps" "$ARTIFACT_ROOT/workload"
+mkdir -p "$LH/clusters" "$LH/addons/cni" "$LH/addons/storage" "$LH/addons/flux-apps" "$ARTIFACT_ROOT/workload"
 
 # Verbatim copies: the cluster definition and the addon payloads.
 cp -R mgmt/local-host/clusters/docker "$LH/clusters/docker"
 cp mgmt/local-host/addons/cni/kindnet.yaml "$LH/addons/cni/kindnet.yaml"
 cp mgmt/local-host/addons/cni/kustomization.yaml "$LH/addons/cni/kustomization.yaml"
 cp mgmt/local-host/addons/cni/flux-ks.yaml "$LH/addons/cni/flux-ks.yaml"
+cp mgmt/local-host/addons/storage/local-path-provisioner.yaml "$LH/addons/storage/local-path-provisioner.yaml"
+cp mgmt/local-host/addons/storage/kustomization.yaml "$LH/addons/storage/kustomization.yaml"
+cp mgmt/local-host/addons/storage/flux-ks.yaml "$LH/addons/storage/flux-ks.yaml"
 cp mgmt/local-host/addons/flux-apps/kustomization.yaml "$LH/addons/flux-apps/kustomization.yaml"
 
 # Airgap variant of the per-cluster flux-operator HelmChartProxy: fetch the
@@ -259,6 +262,7 @@ kind: Kustomization
 resources:
   - clusters/flux-ks.yaml
   - addons/cni/flux-ks.yaml
+  - addons/storage/flux-ks.yaml
   - addons/flux-apps/flux-ks.yaml
 EOF
 

@@ -1,0 +1,11 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: truehear-rabbitmq-chart
+  namespace: rabbitmq
+spec:
+  interval: 1h
+  url: oci://krops-registry:5000/charts/truehear-rabbitmq
+  ref:
+    tag: "0.1.0"
+  insecure: true

@@ -7,6 +7,13 @@ how each problem was resolved.
 The exercise used only Docker containers. It did not create or modify any AWS
 resources.
 
+Related operational guides:
+
+- [Local-host Vault and backend authentication](vault-local-host.md)
+- [Local-host RabbitMQ](rabbitmq-local-host.md)
+- [Local Docker IP recovery](recovery.md)
+- [Local OCI artifact rules](rules.md)
+
 ## Table of contents
 
 - [Goal](#goal)
@@ -26,6 +33,7 @@ resources.
 - [Step 11: Test a day-2 Flux update](#step-11-test-a-day-2-flux-update)
 - [Step 12: Tear down the environment](#step-12-tear-down-the-environment)
 - [Problems and fixes](#problems-and-fixes)
+- [Troubleshoot stale local kubeconfig ports](#troubleshoot-stale-local-kubeconfig-ports)
 - [Key takeaways](#key-takeaways)
 
 ## Goal
@@ -100,15 +108,15 @@ manage.
 
 ## Practice environment
 
-| Item | Value |
-| --- | --- |
-| Repository | `TrueHear-Infra/truehear-infra-dev` |
-| Branch | `test-run-book/local-host-test` |
-| Profile | `local-host` |
-| Container engine | Docker Desktop on Apple Silicon |
-| Local toolbox | `krops-toolbox:dev` |
-| Kubernetes version | `v1.37.0` |
-| Podinfo chart | `6.15.0` |
+| Item               | Value                               |
+| ------------------ | ----------------------------------- |
+| Repository         | `TrueHear-Infra/truehear-infra-dev` |
+| Branch             | `test-run-book/local-host-test`     |
+| Profile            | `local-host`                        |
+| Container engine   | Docker Desktop on Apple Silicon     |
+| Local toolbox      | `krops-toolbox:dev`                 |
+| Kubernetes version | `v1.37.0`                           |
+| Podinfo chart      | `6.15.0`                            |
 
 ## Step 1: Check for a cluster name collision
 
@@ -262,14 +270,14 @@ DOCKER_CONTEXT=default docker ps \
 
 The important containers were:
 
-| Container group | Purpose |
-| --- | --- |
-| `local-management-*` | Management control plane and worker |
-| `local-management-lb` | Management Kubernetes API load balancer |
-| `local-workload-*` | Workload control plane and worker |
-| `local-workload-lb` | Workload Kubernetes API load balancer |
-| `krops-registry` | Local OCI configuration registry |
-| `truehear-local-control-plane` | Existing unrelated kind cluster |
+| Container group                | Purpose                                 |
+| ------------------------------ | --------------------------------------- |
+| `local-management-*`           | Management control plane and worker     |
+| `local-management-lb`          | Management Kubernetes API load balancer |
+| `local-workload-*`             | Workload control plane and worker       |
+| `local-workload-lb`            | Workload Kubernetes API load balancer   |
+| `krops-registry`               | Local OCI configuration registry        |
+| `truehear-local-control-plane` | Existing unrelated kind cluster         |
 
 The missing temporary `mgmt` container confirmed that pivot cleanup had run.
 
@@ -563,15 +571,119 @@ teardown removes runtime resources; it does not revert Git files.
 
 ## Problems and fixes
 
-| Problem | Fix |
-| --- | --- |
-| Docker socket mount failed | Use `DOCKER_CONTEXT=default`. |
-| Toolbox used old Mise | Build `krops-toolbox:dev`. |
-| Host `kubectl` timed out | Use the published localhost API port. |
-| Bare `flux` was missing | Run it through `mise exec`. |
-| Python could not import `yaml` | Source the uv environment through Mise. |
-| Multi-resource watch failed | Watch only `pods`. |
-| Wrapper teardown could not connect | Join the Docker `kind` network. |
+| Problem                            | Fix                                     |
+| ---------------------------------- | --------------------------------------- |
+| Docker socket mount failed         | Use `DOCKER_CONTEXT=default`.           |
+| Toolbox used old Mise              | Build `krops-toolbox:dev`.              |
+| Host `kubectl` timed out           | Use the published localhost API port.   |
+| Bare `flux` was missing            | Run it through `mise exec`.             |
+| Python could not import `yaml`     | Source the uv environment through Mise. |
+| Multi-resource watch failed        | Watch only `pods`.                      |
+| Wrapper teardown could not connect | Join the Docker `kind` network.         |
+
+## Troubleshoot stale local kubeconfig ports
+
+Docker assigns new host ports when the local management or workload cluster is
+recreated. An existing kubeconfig can therefore point at an old port and return
+`connection refused`.
+
+An error using `127.0.0.1:<port>` normally means the kubeconfig contains a stale
+port. An error using `localhost:8080` normally means Kubernetes did not load a
+usable kubeconfig. In this exercise, `local-workload.kubeconfig` had become an
+empty file.
+
+Do not run the workload kubeconfig export while the shell's exported
+`KUBECONFIG` points at `local-workload.kubeconfig`. The export writes that same
+file and can truncate it before `clusterctl` reads the current cluster
+credentials.
+
+### Step 1: Check the kubeconfig file sizes
+
+```bash
+wc -c \
+  .kube/krops-mgmt-host.yaml \
+  .kube/krops-mgmt.yaml \
+  local-workload.kubeconfig
+```
+
+A result of `0` bytes means that kubeconfig is empty and must be regenerated.
+
+### Step 2: Find the current management API port
+
+```bash
+DOCKER_CONTEXT=default \
+docker port local-management-lb 6443/tcp
+```
+
+The number after the final colon is the current host port for the management
+Kubernetes API.
+
+### Step 3: Update the management host kubeconfig
+
+```bash
+management_endpoint=$(
+  DOCKER_CONTEXT=default \
+  docker port local-management-lb 6443/tcp | head -1
+)
+
+management_port="${management_endpoint##*:}"
+
+kubectl --kubeconfig="$PWD/.kube/krops-mgmt-host.yaml" \
+  config set-cluster local-management \
+  --server="https://127.0.0.1:${management_port}"
+```
+
+This changes only the API address. It keeps the existing certificate and
+client credentials.
+
+### Step 4: Verify management-cluster access
+
+```bash
+KUBECONFIG="$PWD/.kube/krops-mgmt-host.yaml" \
+kubectl get clusters
+```
+
+Continue only when `local-management` and `local-workload` are returned.
+
+### Step 5: Regenerate the workload kubeconfig
+
+Pass the management kubeconfig explicitly. This lets `clusterctl` read the
+workload credentials from the management cluster instead of reading the empty
+workload file.
+
+```bash
+KUBECONFIG="$PWD/.kube/krops-mgmt-host.yaml" \
+DOCKER_CONTEXT=default \
+mise -E local-host run kubeconfigs
+```
+
+The task writes `local-workload.kubeconfig` and changes its API address to the
+workload load balancer's current localhost port.
+
+### Step 6: Verify workload-cluster access
+
+```bash
+KUBECONFIG="$PWD/local-workload.kubeconfig" \
+kubectl get nodes
+```
+
+The workload control-plane and worker nodes should both report `Ready`.
+
+### Step 7: Retry the Flux check
+
+```bash
+KUBECONFIG="$PWD/local-workload.kubeconfig" \
+mise exec -- flux get helmreleases --all-namespaces --watch
+```
+
+The successful RabbitMQ installation reported:
+
+```text
+NAMESPACE  NAME      REVISION              READY  MESSAGE
+rabbitmq   rabbitmq  0.1.0+57d99d1399aa   True   Helm install succeeded
+```
+
+Press Ctrl-C after the required HelmRelease reports `READY=True`.
 
 ## Key takeaways
 

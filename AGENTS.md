@@ -23,7 +23,9 @@ resources. There is no app source code here, only declarative infrastructure.
     cluster (`clusters/management/`).
 - `mgmt/local-host/`: the local-host management variant (kind-based).
   Same layout as `mgmt/aws/` (`clusters/docker`, `capi-providers/`,
-  `addons/`, `infrastructure/`) with no cloud dependencies.
+  `addons/`, `infrastructure/`) with no cloud dependencies. Its addons deliver
+  kindnet and the default local-path StorageClass to the CAPD workload cluster
+  before installing that cluster's Flux instance.
 - `mgmt/local-talos/`: the single-node Talos management variant (issue
   #105). Same component layout as `mgmt/aws/` minus addons
   (`infrastructure/`, `capi-providers/`, `clusters/management/`), synced
@@ -103,6 +105,13 @@ resources. There is no app source code here, only declarative infrastructure.
     `tests/test-gcp-identity-chain.py` cross-checks the WIF
     pool/provider/subject couplings against `mgmt/gcp/`.
   - `<region>-01/`: per-cluster overlays pointing at `../base`.
+  - `local-host/`: local CAPD workload applications. Podinfo remains the smoke
+    test. Vault and RabbitMQ are separate SOPS-enabled Flux Kustomizations using
+    the default local-path StorageClass and encrypted TLS Secrets. RabbitMQ uses
+    the repository's custom OCI Helm chart with three local members. The
+    backend component currently creates only the `backend` Namespace and the
+    `truehear-backend` ServiceAccount used for Vault Kubernetes authentication;
+    it does not deploy the application yet.
 - `airgap/`: Zarf offline transfer bundle for the local-host profile.
   `zarf.yaml` is the authoritative image listing for the package and
   `images.txt` is the superset inventory (the `scripts/` preloads derive from
@@ -169,7 +178,10 @@ resources. There is no app source code here, only declarative infrastructure.
   implemented); the docs site assembler includes that folder.
 - `run-book-practice-logs/`: operator learning logs. Its README records the
   verified local-host bootstrap, Flux update, troubleshooting, and teardown
-  exercise.
+  exercise. `vault-local-host.md` covers storage through backend Vault
+  authentication, `rabbitmq-local-host.md` covers the local RabbitMQ lifecycle,
+  `recovery.md` covers Docker endpoint drift and workload recovery, and
+  `rules.md` is the connected-local versus air-gap OCI artifact checklist.
 - `mise.toml`: pinned tool versions and all task entrypoints.
   `mise.aws.toml` is the AWS tool layer (aws-cli, clusterawsadm),
   activated with `MISE_ENV=aws`. `mise.azure.toml` (azure-cli) and

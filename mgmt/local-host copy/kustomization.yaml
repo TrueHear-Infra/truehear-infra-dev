@@ -7,5 +7,4 @@ resources:
   - capi-providers/flux-ks.yaml
   - clusters/flux-ks.yaml
   - addons/cni/flux-ks.yaml
-  - addons/storage/flux-ks.yaml
   - addons/flux-apps/flux-ks.yaml

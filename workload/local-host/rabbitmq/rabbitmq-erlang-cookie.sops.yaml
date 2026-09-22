@@ -1,0 +1,22 @@
+apiVersion: v1
+data:
+    erlang-cookie: ENC[AES256_GCM,data:oKsKTFFRbUBhL2n4/i0ICNKz5TtxxGSm7zsP2hU8dp530xREtURiV2JVP53vQ0hDk/8Z9FhwGINTZ2OgqsYtwa4qNMg0ay1C1ucTNseF1Uf6Xd1QErKANw==,iv:e7rii0LMX1SvJJ4klIJLYDZSiO2aB5765jlgDZuyLHw=,tag:n43QBUDdHZ0pWifWW4HxQg==,type:str]
+kind: Secret
+metadata:
+    name: rabbitmq-erlang-cookie
+    namespace: rabbitmq
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBqTkpDSUdqREQrR0xqVDFj
+            TFZPVXY0N0h2VXlRU3lhL1hJRWFSdHJtVGpNCkY5UWg4YWJqYitjRm51Ykkwb3lK
+            cW9aVHJsY0IxTmhrbHFBdmZlenRQa1EKLS0tIDlHaXovczhrcjdjcE1UV3VET2pk
+            bW1ZYURNMGN2ZWlUY3BpQWVuZFNtM3cKjazFKWZUrz+NWlElcbLQ4QBEIQBWeGr7
+            +yVylX2vs1M9xGHxnrdHU6paaATm3S1kNB2FGObPoDKrZmiwN8MoaA==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1rnpytnyvs6r8wcf740tp47wjkcqap6szqnapewuhw3vnytelvcvqwgmv0h
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-09-22T22:12:07Z"
+    mac: ENC[AES256_GCM,data:uPgFBU4CosVddc7EkE6ASNY7bhI80zWX50jdbAXpOkAjhCT3GE2hRhf3hh2Lwz8I34BpzZTppiAsRkf5Hs269d7VZtSrQkkRPQlKy1BMEMbeSg9OHemo16nzc1htR+/oNUgzOzmYgRh3yOW4LUmf2ofNgvspbHBSKZXcnWr7mSA=,iv:3TptLci3T0cX6+IoH9sdzSMO4LWwDEjUkXo/gvFDzHQ=,tag:KpvagBsOfcyr2MER6yPX/Q==,type:str]
+    version: 3.13.3

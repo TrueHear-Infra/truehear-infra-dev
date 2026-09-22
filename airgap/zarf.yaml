@@ -6,7 +6,8 @@
 #                                 CAPD, CAAPH, and the krops config artifact.
 #   Flux reconciles the workload: the trimmed mgmt/local-host tree carried as
 #                                 the krops-airgap OCI artifact (clusters/,
-#                                 addons/cni/, addons/flux-apps/).
+#                                 addons/cni/, addons/storage/,
+#                                 addons/flux-apps/).
 #
 # The kind node images and the workload-node pod images are NOT in this
 # package; they travel next to it as docker-save tarballs in archives/ and are

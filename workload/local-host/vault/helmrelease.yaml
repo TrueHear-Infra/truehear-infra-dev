@@ -1,0 +1,153 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: vault
+  namespace: vault
+spec:
+  interval: 10m
+  timeout: 10m
+  releaseName: vault
+  chart:
+    spec:
+      chart: vault
+      version: "0.34.1"
+      sourceRef:
+        kind: HelmRepository
+        name: hashicorp
+        namespace: vault
+  install:
+    createNamespace: false
+    disableWait: true
+    remediation:
+      retries: 3
+  upgrade:
+    disableWait: true
+    remediation:
+      retries: 3
+  values:
+    global:
+      enabled: true
+      tlsDisable: false
+
+    injector:
+      enabled: false
+
+    csi:
+      enabled: false
+
+    server:
+      image:
+        repository: hashicorp/vault
+        tag: 2.0.4
+        pullPolicy: IfNotPresent
+
+      updateStrategyType: OnDelete
+      logLevel: info
+      logFormat: json
+
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
+      affinity: ""
+
+      serviceAccount:
+        create: false
+        name: vault
+        createSecret: false
+        serviceDiscovery:
+          enabled: true
+
+      extraEnvironmentVars:
+        VAULT_CACERT: /vault/userconfig/vault-tls/ca.crt
+
+      volumes:
+        - name: vault-tls
+          secret:
+            secretName: vault-tls
+            defaultMode: 0440
+
+      volumeMounts:
+        - name: vault-tls
+          mountPath: /vault/userconfig/vault-tls
+          readOnly: true
+
+      dataStorage:
+        enabled: true
+        size: 1Gi
+        mountPath: /vault/data
+        storageClass: standard
+        accessMode: ReadWriteOnce
+
+      persistentVolumeClaimRetentionPolicy:
+        whenDeleted: Retain
+        whenScaled: Retain
+
+      auditStorage:
+        enabled: false
+
+      dev:
+        enabled: false
+
+      standalone:
+        enabled: false
+
+      ha:
+        enabled: true
+        replicas: 3
+        apiAddr: https://$(VAULT_K8S_POD_NAME).vault-internal.vault.svc.cluster.local:8200
+        clusterAddr: https://$(VAULT_K8S_POD_NAME).vault-internal.vault.svc.cluster.local:8201
+
+        disruptionBudget:
+          enabled: true
+          maxUnavailable: 1
+
+        raft:
+          enabled: true
+          setNodeId: true
+          config: |
+            ui = true
+            disable_mlock = true
+
+            listener "tcp" {
+              address = "[::]:8200"
+              cluster_address = "[::]:8201"
+              tls_disable = false
+              tls_cert_file = "/vault/userconfig/vault-tls/tls.crt"
+              tls_key_file = "/vault/userconfig/vault-tls/tls.key"
+              tls_min_version = "tls12"
+            }
+
+            storage "raft" {
+              path = "/vault/data"
+
+              retry_join {
+                leader_api_addr = "https://vault-0.vault-internal.vault.svc.cluster.local:8200"
+                leader_tls_servername = "vault-0.vault-internal.vault.svc.cluster.local"
+                leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+              }
+
+              retry_join {
+                leader_api_addr = "https://vault-1.vault-internal.vault.svc.cluster.local:8200"
+                leader_tls_servername = "vault-1.vault-internal.vault.svc.cluster.local"
+                leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+              }
+
+              retry_join {
+                leader_api_addr = "https://vault-2.vault-internal.vault.svc.cluster.local:8200"
+                leader_tls_servername = "vault-2.vault-internal.vault.svc.cluster.local"
+                leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+              }
+            }
+
+            service_registration "kubernetes" {}
+
+    ui:
+      enabled: true
+      serviceType: ClusterIP
+      externalPort: 8200
+      targetPort: 8200

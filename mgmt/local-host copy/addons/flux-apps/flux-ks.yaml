@@ -15,4 +15,4 @@ spec:
   path: ./mgmt/local-host/addons/flux-apps
   dependsOn:
     - name: caaph-system
-    - name: local-workload-storage
+    - name: local-workload-cni

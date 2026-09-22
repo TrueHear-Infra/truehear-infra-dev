@@ -4,6 +4,3 @@ kind: Kustomization
 # cluster.
 resources:
   - podinfo
-  - vault/flux-ks.yaml
-  - backend/flux-ks.yaml
-  - rabbitmq/flux-ks.yaml
