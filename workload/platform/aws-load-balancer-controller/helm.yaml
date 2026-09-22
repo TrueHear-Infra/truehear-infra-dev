@@ -1,14 +1,12 @@
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
+kind: HelmRepository
 metadata:
-  name: aws-load-balancer-controller
+  name: eks-charts
   namespace: kube-system
 spec:
   interval: 1h
-  url: oci://public.ecr.aws/eks-charts/aws-load-balancer-controller
-  ref:
-    tag: "3.5.0"
+  url: https://aws.github.io/eks-charts
 ---
 # AWS Load Balancer Controller. Credentials come from EKS Pod Identity: the
 # PodIdentityAssociation in mgmt/aws/infrastructure/<env>-pod-identity binds
@@ -25,9 +23,14 @@ metadata:
 spec:
   interval: 10m
   timeout: 10m
-  chartRef:
-    kind: OCIRepository
-    name: aws-load-balancer-controller
+  chart:
+    spec:
+      chart: aws-load-balancer-controller
+      version: "3.5.0"
+      sourceRef:
+        kind: HelmRepository
+        name: eks-charts
+        namespace: kube-system
   install:
     crds: CreateReplace
   upgrade:
