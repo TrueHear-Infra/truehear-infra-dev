@@ -63,6 +63,11 @@ if ! python3 tests/test-truehear-env-secrets.py; then
   echo "    FAILED: truehear env secret generator" >&2
   fail=1
 fi
+echo "==> workload overlay cross-check"
+if ! python3 tests/test-workload-overlays.py; then
+  echo "    FAILED: workload overlay cross-check" >&2
+  fail=1
+fi
 echo "==> local-host kubeconfig endpoint is host-only (toolbox keeps the kind-network endpoint)"
 if ! python3 tests/test-local-host-kubeconfig-toolbox-endpoint.py; then
   echo "    FAILED: local-host kubeconfig toolbox endpoint" >&2

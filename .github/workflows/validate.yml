@@ -176,6 +176,9 @@ jobs:
       - name: truehear env secret generator (#4)
         run: python3 tests/test-truehear-env-secrets.py
 
+      - name: workload overlay cross-check (#4)
+        run: python3 tests/test-workload-overlays.py
+
       - name: local-host kubeconfig endpoint is host-only (#423)
         run: python3 tests/test-local-host-kubeconfig-toolbox-endpoint.py
 
