@@ -10,6 +10,7 @@ metadata:
 spec:
   ttlSecondsAfterFinished: 86400
   backoffLimit: 20
+  activeDeadlineSeconds: 3600
   template:
     spec:
       serviceAccountName: redis
@@ -36,23 +37,28 @@ spec:
               test "$directive" = requirepass || exit 1
               test -n "$REDISCLI_AUTH" || exit 1
               export REDISCLI_AUTH
-              # Wait until all six nodes answer PING over TLS. No upper
-              # bound: the Job's backoffLimit handles failure.
+              # Wait until all six nodes answer PING over TLS, at most 120 rounds of 5s. Exiting non-zero lets backoffLimit retry the Job.
+              rounds=0
               while :; do
                 ok=0
                 for i in 0 1 2 3 4 5; do
-                  if [ "$(redis-cli -e --tls --cacert /etc/redis/tls/ca.crt -h "redis-$i.redis-headless.redis.svc.cluster.local:6379" PING 2>/dev/null)" = "PONG" ]; then
+                  if [ "$(redis-cli -e --tls --cacert /etc/redis/tls/ca.crt -h "redis-$i.redis-headless.redis.svc.cluster.local" -p 6379 PING 2>/dev/null)" = "PONG" ]; then
                     ok=$((ok + 1))
                   fi
                 done
                 if [ "$ok" -eq 6 ]; then
                   break
                 fi
+                rounds=$((rounds + 1))
+                if [ "$rounds" -ge 120 ]; then
+                  echo "redis nodes not ready after 120 rounds" >&2
+                  exit 1
+                fi
                 sleep 5
               done
               # Idempotent: a formed cluster already lists all six nodes.
               known=$(redis-cli -e --tls --cacert /etc/redis/tls/ca.crt \
-                -h redis-0.redis-headless.redis.svc.cluster.local:6379 \
+                -h redis-0.redis-headless.redis.svc.cluster.local -p 6379 \
                 cluster info | grep '^cluster_known_nodes' | cut -d: -f2 | tr -d ' \r')
               if [ "$known" = 6 ]; then
                 exit 0
