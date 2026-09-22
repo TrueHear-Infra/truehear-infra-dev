@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: rabbitmq-bootstrap-auth
+    namespace: rabbitmq
+    labels:
+        app.kubernetes.io/name: rabbitmq
+        app.kubernetes.io/component: message-broker
+        app.kubernetes.io/part-of: truehear-platform
+        truehear.io/environment: staging
+type: Opaque
+stringData:
+    username: ENC[AES256_GCM,data:BtJUK3SsOiEKV9X4YdA=,iv:xQG53MWq5+BY4dJaIe3daNdTtFpBTkR3xxBjPr1dfik=,tag:xRhJCWJX4p1w3YKiII3UVQ==,type:str]
+    password: ENC[AES256_GCM,data:OSRLcgEHQLNYJ8TqAxth3sD8yWA7vFqBctvKjs1i7kk=,iv:jP0n6Nri87upRo6QlXnwAfH4A9XaHi9egSRdp3pfaqo=,tag:HEWsVwpgdLyk8IqBr1K5GA==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBCQzFsM2sxTHd5Vkh2YUdn
+            dnNXTzBLR2wwV2ZpOS94Z2hkQWhxTFdoYm5BCnBRc0tBT3ZiZStGVERvM1pZek5C
+            bFJIK0xWSVh4QUpaMnQrVG9QbWV3WFUKLS0tIDBobzVtdGhiZll4aEJhb1hJeXhC
+            SVFXK0ttelZqa1I3M09RTmI0MGljazgK5AMaLWSbYhniGy8rruQr9GWT0Etwa8hm
+            qgS2rMdb3dPCzz/OcV57o72LdoXzE3i8wvlM44rYEHnLzbxy9W6hLQ==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1qdn86vl3v58juv4j7gwuz3qu9hjl4fhcpvla39m848cgz3xd44asxa30nv
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-09-22T15:34:32Z"
+    mac: ENC[AES256_GCM,data:P8T2u7VPUrEPokMZhZvZhMe8gZg6DLgDN/GpUBxwvNS9X7bfRF1MMgpiwpKKLr0AqTdIlNHqzMUp3q3Md+GvY4rVQtrf7UunovtcqnaGfeYnsOtcOuqEQdH29Dk2xbjr9Wufn4LPjSu4Tgn9t1DhK46iygs5Iq9CcPCXiL8Eue0=,iv:ag3OXsSv9T0F0xAZ6MjyKx4Hc+K3VZX0UHCegqmakNI=,tag:cZjcKrF6P6iAoHbbYthpBw==,type:str]
+    version: 3.13.3

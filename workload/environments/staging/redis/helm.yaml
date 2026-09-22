@@ -1,0 +1,33 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: redis
+  namespace: redis
+spec:
+  interval: 10m
+  timeout: 15m
+  chart:
+    spec:
+      chart: ./workload/base/redis/chart
+      sourceRef:
+        kind: GitRepository
+        name: flux-system
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: redis
+    replicaCount: 6
+    rollout:
+      partition: 0
+    persistence:
+      storageClassName: truehear-encrypted-gp3
+    acl:
+      enabled: true
+      secretName: redis-backend-acl
+      secretKey: users.conf

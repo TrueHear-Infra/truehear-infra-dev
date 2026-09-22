@@ -42,4 +42,8 @@ for f in _helpers.tpl client-service.yaml configmap.yaml headless-service.yaml p
   fetch "kubernetes/services/rabbitmq/chart/templates/$f" "workload/base/rabbitmq/chart/templates/$f"
 done
 fetch "kubernetes/services/vault/values/dev.yaml" "workload/base/vault/values.yaml"
+# The staging overlay reads the same values through a configMapGenerator,
+# which cannot reference files outside its own kustomization root. A future
+# prod overlay adds a third destination.
+fetch "kubernetes/services/vault/values/dev.yaml" "workload/environments/staging/vault/values.yaml"
 echo "pinned to $REPO@$SHA"

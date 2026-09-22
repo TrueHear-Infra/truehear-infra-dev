@@ -1,0 +1,84 @@
+# Upstream forms the Redis cluster by hand after reviewing the placement.
+# On staging the automatic layout is accepted because the chart's
+# anti-affinity already spreads the six Pods over three workers; prod may
+# replace this Job with the manual procedure.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redis-cluster-create
+  namespace: redis
+spec:
+  ttlSecondsAfterFinished: 86400
+  backoffLimit: 20
+  template:
+    spec:
+      serviceAccountName: redis
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+      containers:
+        - name: cluster-create
+          image: docker.io/library/redis:8.2.9-bookworm
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              IFS=" " read -r directive REDISCLI_AUTH < /etc/redis/auth/redis-auth.conf
+              test "$directive" = requirepass || exit 1
+              test -n "$REDISCLI_AUTH" || exit 1
+              export REDISCLI_AUTH
+              # Wait until all six nodes answer PING over TLS. No upper
+              # bound: the Job's backoffLimit handles failure.
+              while :; do
+                ok=0
+                for i in 0 1 2 3 4 5; do
+                  if [ "$(redis-cli -e --tls --cacert /etc/redis/tls/ca.crt -h "redis-$i.redis-headless.redis.svc.cluster.local:6379" PING 2>/dev/null)" = "PONG" ]; then
+                    ok=$((ok + 1))
+                  fi
+                done
+                if [ "$ok" -eq 6 ]; then
+                  break
+                fi
+                sleep 5
+              done
+              # Idempotent: a formed cluster already lists all six nodes.
+              known=$(redis-cli -e --tls --cacert /etc/redis/tls/ca.crt \
+                -h redis-0.redis-headless.redis.svc.cluster.local:6379 \
+                cluster info | grep '^cluster_known_nodes' | cut -d: -f2 | tr -d ' \r')
+              if [ "$known" = 6 ]; then
+                exit 0
+              fi
+              redis-cli -e --tls --cacert /etc/redis/tls/ca.crt --cluster create \
+                redis-0.redis-headless.redis.svc.cluster.local:6379 \
+                redis-1.redis-headless.redis.svc.cluster.local:6379 \
+                redis-2.redis-headless.redis.svc.cluster.local:6379 \
+                redis-3.redis-headless.redis.svc.cluster.local:6379 \
+                redis-4.redis-headless.redis.svc.cluster.local:6379 \
+                redis-5.redis-headless.redis.svc.cluster.local:6379 \
+                --cluster-replicas 1 --cluster-yes
+          volumeMounts:
+            - name: redis-tls
+              mountPath: /etc/redis/tls
+              readOnly: true
+            - name: redis-auth
+              mountPath: /etc/redis/auth
+              readOnly: true
+      volumes:
+        - name: redis-tls
+          secret:
+            secretName: redis-tls
+        - name: redis-auth
+          secret:
+            secretName: redis-auth
+            items:
+              - key: redis-auth.conf
+                path: redis-auth.conf

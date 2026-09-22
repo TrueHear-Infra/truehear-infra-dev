@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Staging overlay root, rendered by the truehear-platform Flux Kustomization:
+# the namespaces, ServiceAccounts and the backend for the platform services.
+# keycloak, vault, redis and rabbitmq are reached only through their own
+# directories so each Flux Kustomization has a distinct root and health
+# checks (workload/eu-north-1-staging/flux-ks.yaml).
+resources:
+  - backend
+  - ../../base/truehear-platform/services/rabbitmq/base
+  - ../../base/truehear-platform/services/redis/base
+  - ../../base/truehear-platform/services/vault/base
+labels:
+  - pairs:
+      truehear.io/environment: staging

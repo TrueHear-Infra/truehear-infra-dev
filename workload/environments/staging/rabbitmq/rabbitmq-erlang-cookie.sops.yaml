@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: rabbitmq-erlang-cookie
+    namespace: rabbitmq
+    labels:
+        app.kubernetes.io/name: rabbitmq
+        app.kubernetes.io/component: message-broker
+        app.kubernetes.io/part-of: truehear-platform
+        truehear.io/environment: staging
+type: Opaque
+stringData:
+    erlang-cookie: ENC[AES256_GCM,data:E7UB+m1CtKWiZCzT5wYoFseCmu0hvJyXwsYU6vE5FjQ75wfHNT9NWvs+5w3P25aYmUQQQqfB8Ovgy3xHvtfmIQ==,iv:1gEq6f3aEazmzSIYpoWWewFbBUAm+YTJQV4/tZQ6+2s=,tag:JU8ECSLmbxHqdlnUdq2hVg==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBOSTdnS2p0em1XTjJRVy9E
+            K1FvNHhweUViWkg3OTBRMlQ2VHNmbWRXdWs0CnVLeERVK0tlYmVUbE00TUNsYkFG
+            UGs2elc0NDdwQjV2ZlA2Z2M5eXQ3ZUEKLS0tIG5KdUJIQjFnNGFOOGVFdkJYaGdq
+            TGhPbEdSV245RnFUQis2eUs5VFlzancK9eFy8Qtsz3E52O5vnYAWgQE8gt4sxpPU
+            upyHPgiq4S+S5XTzbN6wPAsTP4cC4fljx8dIvh37qTCl2bqhxvOrXA==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1qdn86vl3v58juv4j7gwuz3qu9hjl4fhcpvla39m848cgz3xd44asxa30nv
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-09-22T15:34:32Z"
+    mac: ENC[AES256_GCM,data:F4CqO6o2Vac6vTP7wNtKhGY0Zfpb37tsTrtETWGB8npaVUMdPVWcMeI1tJg5Fri8GQu4gQvhKvvnwMRRhxtkP4jR4z6HZuLyCX1jWW4nkrM6lZ9+ATue/wSLvoNxWGyN55nIHEWxH1w3Yi/GDW1nBF/pX0jfeu1FxctLwNzmR3E=,iv:dAwritrE9eTmgK9lGSyPGvobYkJUvrEjiyUqBTGM5iw=,tag:Q0cOOCOT0BKle4IXZf1vQw==,type:str]
+    version: 3.13.3
