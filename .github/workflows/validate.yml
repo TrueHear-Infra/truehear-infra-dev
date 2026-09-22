@@ -243,6 +243,7 @@ jobs:
             extends: default
             ignore: |
               *.sops.yaml
+              workload/base/*/chart/templates/
             rules:
               line-length: disable
               document-start: disable
