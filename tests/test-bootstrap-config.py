@@ -159,23 +159,37 @@ def main() -> int:
             prefix_dir = REPO_ROOT / "mgmt/aws/clusters" / region
             if not prefix_dir.is_dir():
                 failures.append(f"environments.{name} teardown region {region!r} has no cluster directory")
-            # The K8s cluster name must equal the Kustomization namePrefix
-            # + 'dev' (dev/cluster.yaml names Cluster 'dev').
-            kustomization = prefix_dir / "dev/kustomization.yaml"
-            if kustomization.is_file():
-                text = kustomization.read_text()
-                expected_prefix = f"namePrefix: {region}-"
-                if expected_prefix not in text:
-                    failures.append(
-                        f"environments.{name} teardown: {kustomization.relative_to(REPO_ROOT)} "
-                        f"lacks '{expected_prefix}'"
-                    )
             cluster_name = workload.get("cluster-name", "")
             if cluster_name and not cluster_name.startswith(region):
                 failures.append(
                     f"environments.{name} teardown cluster-name {cluster_name!r} "
                     f"does not start with its region {region!r}"
                 )
+            # The K8s cluster name must equal the Kustomization namePrefix
+            # + the environment level: <region>-<env> comes from
+            # mgmt/aws/clusters/<region>/<env>/kustomization.yaml
+            # (namePrefix: <region>-) and <env>/cluster.yaml (Cluster <env>).
+            env_level = cluster_name[len(region) + 1:] if cluster_name.startswith(region + "-") else ""
+            env_dir = prefix_dir / env_level if env_level else None
+            if env_dir is None or not env_dir.is_dir():
+                failures.append(
+                    f"environments.{name} teardown cluster-name {cluster_name!r} "
+                    f"has no mgmt/aws/clusters/{region}/<env> directory"
+                )
+            else:
+                text = (env_dir / "kustomization.yaml").read_text()
+                expected_prefix = f"namePrefix: {region}-"
+                if expected_prefix not in text:
+                    failures.append(
+                        f"environments.{name} teardown: {env_dir.relative_to(REPO_ROOT)}/kustomization.yaml "
+                        f"lacks '{expected_prefix}'"
+                    )
+                cluster_text = (env_dir / "cluster.yaml").read_text()
+                if not re.search(rf"^kind: Cluster\nmetadata:\n  name: {re.escape(env_level)}$", cluster_text, re.M):
+                    failures.append(
+                        f"environments.{name} teardown: {env_dir.relative_to(REPO_ROOT)}/cluster.yaml "
+                        f"does not name its Cluster {env_level!r}"
+                    )
             # This repo declares no RDS instance; the sweep-target field is
             # still required by bootstrap-rs, so pin the format only.
             rds = workload.get("rds-instance", "")
@@ -199,12 +213,16 @@ def main() -> int:
     teardown = config.get("teardown", {})
     if teardown:
         # The Pod Identity roles created by the management cluster's ACK IAM
-        # controller (mgmt/aws/infrastructure/dev-pod-identity/roles.yaml):
-        # every `spec.name` there must be in the sweep list and vice versa.
-        roles_yaml = REPO_ROOT / "mgmt/aws/infrastructure/dev-pod-identity/roles.yaml"
-        declared = set(
-            re.findall(r"^  name: (truehear-[a-z0-9-]+)$", roles_yaml.read_text(), re.M)
-        ) if roles_yaml.is_file() else set()
+        # controller (mgmt/aws/infrastructure/<env>-pod-identity/roles.yaml,
+        # one directory per environment level): every `spec.name` there must
+        # be in the sweep list and vice versa.
+        declared = set()
+        for roles_yaml in sorted(
+            (REPO_ROOT / "mgmt/aws/infrastructure").glob("*-pod-identity/roles.yaml")
+        ):
+            declared |= set(
+                re.findall(r"^  name: (truehear-[a-z0-9-]+)$", roles_yaml.read_text(), re.M)
+            )
         roles = set(teardown.get("global-iam-roles", []))
         for role in sorted(declared - roles):
             failures.append(f"teardown.global-iam-roles missing {role}")
