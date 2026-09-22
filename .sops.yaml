@@ -10,4 +10,4 @@
 creation_rules:
   - path_regex: mgmt/(aws|azure|gcp)/.*\.sops\.yaml$
     encrypted_regex: "^(data|stringData)$"
-    age: age1amqtgevmdxutg07rkr3wggua43620zgncgfq53vkww0283wrgspqv9q0jw
+    age: age1qdn86vl3v58juv4j7gwuz3qu9hjl4fhcpvla39m848cgz3xd44asxa30nv
