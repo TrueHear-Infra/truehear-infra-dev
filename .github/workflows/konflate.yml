@@ -7,9 +7,11 @@ name: konflate
 # runners, so CI runs its own one-shot instance scoped to the triggering PR.
 #
 # Auth uses only the workflow's GITHUB_TOKEN; no PATs or stored secrets.
-# Fork PRs receive a skipped workflow run: rendering one would run untrusted
-# sources through konflate. The job guard below prevents the service and steps
-# from starting for those PRs.
+# PRs from an external fork receive a skipped workflow run: rendering one
+# would run untrusted sources through konflate. The guard below keeps the
+# job running for this repo's own PRs (head repo is this repo) and skips
+# them otherwise. This is itself a fork of polarsquad/krops, so the guard
+# must test the head repo's full_name rather than head.repo.fork.
 
 on:
   pull_request:
@@ -33,7 +35,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     if: >-
-      github.event.pull_request.head.repo.fork == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     services:
       konflate:
@@ -41,7 +42,7 @@ jobs:
         ports:
           - 8080:8080
         env:
-          KONFLATE_REPO: github://polarsquad/krops
+          KONFLATE_REPO: github://TrueHear-Infra/truehear-infra-dev
           KONFLATE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Render only the PR that triggered this run.
           KONFLATE_PR_FILTER_EXPR: pr.number == ${{ github.event.pull_request.number }}
