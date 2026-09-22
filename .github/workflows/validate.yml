@@ -173,6 +173,9 @@ jobs:
       - name: sops-keygen prints the public key (#423)
         run: python3 tests/test-sops-keygen-prints-public-key.py
 
+      - name: truehear env secret generator (#4)
+        run: python3 tests/test-truehear-env-secrets.py
+
       - name: local-host kubeconfig endpoint is host-only (#423)
         run: python3 tests/test-local-host-kubeconfig-toolbox-endpoint.py
 
