@@ -91,14 +91,14 @@ flowchart TD
     RUSER -.->|sts:AssumeRole| RD2
 
     FA -->|"HelmChartProxy: flux-operator<br/>CRS: FluxInstance + cluster-vars + pull secret"| WF1
-    FA -->|same, per region label| WF2
+    FA -->|same, per environment label| WF2
 
-    subgraph wl1["Workload cluster eu-north-1"]
-        WF1["Flux (sync: workload/eu-north-01)<br/>workload/base is empty today"]
+    subgraph wl1["Workload cluster eu-north-1-dev"]
+        WF1["Flux (sync: workload/eu-north-1-dev)<br/>platform + environments/dev overlay"]
     end
 
-    subgraph wl2["Workload cluster eu-west-1"]
-        WF2["Flux (sync: workload/eu-west-01)<br/>workload/base is empty today"]
+    subgraph wl2["Workload cluster eu-north-1-staging"]
+        WF2["Flux (sync: workload/eu-north-1-staging)<br/>platform + environments/staging overlay"]
     end
 
     WF1 --> REPO
@@ -150,27 +150,35 @@ write-back, UI access): [PR review: konflate](./konflate.md).
 ### Reconciliation order (AWS workload clusters)
 
 ```
-(empty: workload/base reconciles nothing since issue #346; the per-cluster
-Flux instance stays installed, ready for a future application workload)
+platform (StorageClass, ALB controller) > truehear-platform (namespaces,
+ServiceAccounts, backend) > keycloak, vault, redis, rabbitmq (each dependsOn
+truehear-platform; vault, redis, rabbitmq are HelmReleases, keycloak is a
+plain manifest overlay). Environment-neutral service roots and charts come
+from workload/base, composed through the environment overlay
+(workload/environments/<env>), never directly. The sync root
+workload/eu-north-1-staging declares the six Flux Kustomizations; the dev
+overlay and sync root are placeholders in this repo.
 ```
 
 ### How workload apps are delivered (AWS)
 
-1. Each `Cluster` in `mgmt/aws/clusters/` carries labels `fluxcd: enabled`
-   and `region: <region>`.
+1. Each `Cluster` in `mgmt/aws/clusters/` carries the labels `fluxcd:
+   enabled`, `region: <region>`, and `environment: <env>` (the TrueHear
+   clusters, `eu-north-1-dev` and `eu-north-1-staging`).
 2. `flux-apps` matches those labels: a **HelmChartProxy** installs the Flux
-   Operator on every workload cluster, and per-region **ClusterResourceSets**
-   apply a `FluxInstance` (syncing `workload/<region>-01/`), a `cluster-vars`
-   ConfigMap (`AWS_REGION`, `CLUSTER_NAME`, `AWS_ACCOUNT_ID`, kept as the
-   `postBuild` substitution channel for a future workload), and the Git pull
-   secret.
-3. The workload cluster's Flux reconciles `workload/`, whose `base/` overlay
-   is intentionally empty since issue #346: the ACK controllers and the
-   Bucket / DBInstance / reader Role CRs moved to the management cluster
-   (`mgmt/aws/infrastructure/ack-controllers/` and
-   `mgmt/aws/infrastructure/workload-resources/`). The instance reconciles
-   nothing today but is ready for a future application workload (the
-   local-host Podinfo pattern).
+   Operator on every workload cluster, and per-environment
+   **ClusterResourceSets** apply a `FluxInstance` (syncing
+   `workload/eu-north-1-<env>/`), a `cluster-vars` ConfigMap (the
+   `postBuild` substitution channel: region, cluster name, EKS name, account
+   ID, environment, VPC ID, Keycloak hostname and ACM certificate ARN), and
+   the Git pull secret. See
+   [TrueHear environments](./truehear-environments.md) for the matrix.
+3. The workload cluster's Flux reconciles its sync root, whose Flux
+   Kustomizations point at `workload/platform` and the environment overlay
+   (which composes `workload/base`). The `eu-north-1-staging` sync root
+   exists and reconciles the full stack; the dev sync root is a placeholder
+   until the dev overlay lands. Adding an app to the layering is documented
+   in [Extending](./extending.md).
 
 See [AWS authentication & IAM](./aws-iam.md) for how the ACK controllers
 authenticate, and [Workload resources](./workload-resources.md) for what they

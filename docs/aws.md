@@ -92,12 +92,18 @@ cluster.
 
 ## Commit the identifiers
 
-1. `mgmt/aws/addons/flux-apps/flux-instance.yaml` (the `cluster-vars`
-   ConfigMap per region): set `AWS_ACCOUNT_ID` to your account ID, kept as
-   the `postBuild` substitution channel for a future workload app.
-2. `mgmt/aws/infrastructure/workload-resources/`: the account ID is a
-   literal in the bucket names, the bucket policy ARNs, the reader-role
-   trust principal, and the RDS resource-level policy ARNs (there is no
+1. `mgmt/aws/addons/flux-apps/flux-instance.yaml` carries one `cluster-vars`
+   ConfigMap per environment (the `flux-instance-dev` and
+   `flux-instance-staging` ConfigMaps). After the first bootstrap of each
+   environment, commit the real `VPC_ID` (the ALB controller cannot use
+   IMDS with hop limit 1, so it needs the literal VPC ID) and the
+   `KEYCLOAK_ACM_CERTIFICATE_ARN` (the ACM certificate the Keycloak ALB
+   Ingress terminates on) in both ConfigMaps. Until then the placeholders
+   `REPLACE_AFTER_FIRST_BOOTSTRAP` and `REPLACE_WITH_ACM_CERT_ARN` are
+   committed.
+2. The account ID is a literal in `mgmt/aws/infrastructure/workload-resources/`
+   (the bucket names, the bucket policy ARNs, the reader-role trust
+   principal, and the RDS resource-level policy ARNs; there is no
    `cluster-vars` ConfigMap on the management cluster). The reader role in
    `mgmt/aws/infrastructure/aws-global-iam/reader-user.yaml` wildcards the
    account ID instead.
@@ -149,11 +155,11 @@ ack-controllers > aws-global-iam
 konflate (no dependencies)
 ```
 
-Workload clusters (`workload/<region>-01/`):
+Workload clusters (`workload/eu-north-1-staging/`, the TrueHear layering):
 
 ```
-(empty: workload/base reconciles nothing since issue #346; the per-cluster
-Flux instance stays installed, ready for a future application workload)
+platform (StorageClass, ALB controller) > truehear-platform
+(namespaces, ServiceAccounts, backend) > keycloak, vault, redis, rabbitmq
 ```
 
 ## Upgrading CAPA

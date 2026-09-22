@@ -368,6 +368,7 @@ teardown controls, toolbox release, and current parity status.
 | [docs/dependencies.md](docs/dependencies.md) | Renovate-managed dependency updates: covered surfaces, update procedure, intentional differences |
 | [docs/architecture.md](docs/architecture.md) | Architecture diagram, reconciliation order, how workload apps are delivered |
 | [docs/aws.md](docs/aws.md) | AWS environment: clusters, credentials, identifiers, reconciliation order, upgrades, known limitations |
+| [docs/truehear-environments.md](docs/truehear-environments.md) | TrueHear environment levels (dev, staging, prod): layering, environment matrix, sizing, adding an environment, post-bootstrap operator steps |
 | [docs/wiremock-e2e-spike-findings-aws.md](docs/wiremock-e2e-spike-findings-aws.md) | WireMock e2e Phase 0 spike findings (AWS): CAPA/ACK honor `AWS_ENDPOINT_URL`, no network-layer interception needed |
 | [docs/wiremock-e2e-spike-findings-azure.md](docs/wiremock-e2e-spike-findings-azure.md) | WireMock e2e Phase 0 spike findings (Azure): ASO honors endpoint settings, CAPZ needs the CoreDNS rewrite, `HTTPS_PROXY` is not viable |
 | [docs/wiremock-e2e-spike-findings-gcp.md](docs/wiremock-e2e-spike-findings-gcp.md) | WireMock e2e Phase 0 spike findings (GCP): REST and gRPC both interceptable via CoreDNS rewrite + SAN certs; HTTPS_PROXY covers REST only; CAPG v1.13.1 `serviceEndpoints` covers REST compute only |
@@ -440,17 +441,21 @@ teardown controls, toolbox release, and current parity status.
 ├── mgmt/gcp/                      GKE management cluster (CAPG + Config
 │   │                              Connector operator + WIF identities)
 └── workload/                     Synced by each WORKLOAD cluster's Flux
-    ├── base/                     Intentionally empty since #346 (ACK moved
-    │                              to the management cluster); ready for a
-    │                              future application workload
+    ├── base/                     TrueHear service roots and vendored charts
+    │                              (keycloak, truehear-platform, redis/chart,
+    │                              rabbitmq/chart, vault); never edited in place
+    ├── platform/                 StorageClass + ALB controller HelmRelease
+    ├── environments/             One overlay per environment level:
+    │   ├── dev/                  (placeholder)
+    │   ├── staging/              full stack overlay
+    │   └── prod/                 (placeholder)
+    ├── eu-north-1-staging/       TrueHear sync root (staging)
     ├── azure-base/               cert-manager, ASO, and the Azure workload
     │                              resources (VNet, storage, PostgreSQL)
     ├── gcp-base/                 KCC operator + ConfigConnector, PSA range,
     │                              storage bucket, Cloud SQL, per-cluster
     │                              reader GSA
     ├── local-host/               OCI-synced Podinfo workload overlay
-    ├── eu-north-01/              Per-cluster overlay (sync target)
-    ├── eu-west-01/               Per-cluster overlay (sync target)
     ├── swedencentral-01/         Per-cluster overlay -> azure-base
     └── europe-north1-01/         Per-cluster overlay -> gcp-base
 ```
