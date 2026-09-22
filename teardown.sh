@@ -140,12 +140,12 @@ fi
 export AWS_PAGER=""
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-REGIONS="eu-north-1 eu-west-1"
+REGIONS="eu-north-1"
 
-# Global IAM roles (region-independent): the per-cluster reader roles created
-# by the management cluster's ACK IAM controller (krops-<cluster>-reader, see
-# mgmt/aws/infrastructure/workload-resources/role.yaml)
-GLOBAL_IAM_ROLES="krops-eu-north-1-workload-reader krops-eu-west-1-workload-reader"
+# Global IAM roles (region-independent): the Pod Identity roles for the dev
+# cluster's platform controllers, created by the management cluster's ACK IAM
+# controller (mgmt/aws/infrastructure/dev-pod-identity/roles.yaml)
+GLOBAL_IAM_ROLES="truehear-dev-ebs-csi truehear-dev-aws-load-balancer-controller"
 
 # Global IAM users: the console reader user created by the management
 # cluster's ACK IAM controller (mgmt/aws/infrastructure/aws-global-iam/
@@ -210,12 +210,11 @@ PROVIDER_DELETE_TIMEOUT="${PROVIDER_DELETE_TIMEOUT:-300}"
 
 # ── AWS region/cluster lookup ─────────────────────────────────────────────────
 # CAPA creates the EKS cluster with dashes converted to underscores.
-# K8s Cluster name:  default-eu-north-1-workload-control-plane (dashes)
-# EKS cluster name:  default_eu-north-1-workload-control-plane (underscore)
+# K8s Cluster name:  default-eu-north-1-dev-control-plane (dashes)
+# EKS cluster name:  default_eu-north-1-dev-control-plane (underscore)
 _get_eks_cluster() {
   case "$1" in
-    eu-north-1) echo "default_eu-north-1-workload-control-plane" ;;
-    eu-west-1)  echo "default_eu-west-1-workload-control-plane" ;;
+    eu-north-1) echo "default_eu-north-1-dev-control-plane" ;;
     *)          return 1 ;;
   esac
 }
@@ -226,8 +225,7 @@ _get_eks_cluster() {
 # roles by name.
 _get_cluster_name() {
   case "$1" in
-    eu-north-1) echo "eu-north-1-workload" ;;
-    eu-west-1)  echo "eu-west-1-workload" ;;
+    eu-north-1) echo "eu-north-1-dev" ;;
     *)          return 1 ;;
   esac
 }
@@ -245,8 +243,7 @@ _get_capa_tag_key() {
 # mgmt/aws/infrastructure/workload-resources/dbinstance.yaml).
 _get_rds_instance() {
   case "$1" in
-    eu-north-1) echo "krops-eu-north-1-workload-db" ;;
-    eu-west-1)  echo "krops-eu-west-1-workload-db" ;;
+    eu-north-1) echo "krops-eu-north-1-dev-db" ;;
     *)          return 1 ;;
   esac
 }
@@ -611,8 +608,7 @@ _cleanup_iam_role() {
 # CAPA (EKSEnableIAM=true) auto-creates per-cluster IAM roles whose exact
 # names are not declared in Git (e.g. <cluster>-iam-service-role and the
 # nodegroup roles). Sweep every role whose name starts with the cluster name –
-# that prefix ("eu-north-1-workload"/"eu-west-1-workload") is unique to this
-# repo's clusters.
+# that prefix ("eu-north-1-dev") is unique to this repo's clusters.
 _cleanup_capa_iam_roles() {
   _cluster_name="$1"
 
@@ -782,7 +778,7 @@ fi
 #                                   VPC – scoped to CAPA-tagged VPCs only
 #   4e. S3 buckets                 – ACK-created versioned data buckets
 #   4f. IAM roles + users          – CAPA per-cluster roles (prefix sweep)
-#                                   + ACK-created krops-*-reader roles
+#                                   + truehear-dev-* Pod Identity roles
 #                                   + the krops-reader console user
 #   4g. CloudFormation stack       – clusterawsadm bootstrap stack
 
