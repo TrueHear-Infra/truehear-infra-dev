@@ -2,89 +2,106 @@
 
 ## ACK controllers on the management cluster (static SOPS credentials)
 
-All ACK controllers (S3, RDS, IAM) run on the **management** cluster only
+All ACK controllers (IAM, EKS) run on the **management** cluster only
 (issue #346). ACK controllers talk to the AWS API directly, so they do not
 need to run inside the cluster whose resources they manage; the workload
 clusters run no controllers and hold no credentials at all.
 
+The purpose here is Pod Identity plumbing for the TrueHear dev cluster's
+platform controllers: the management cluster's ACK IAM controller creates
+the two controller roles (and the ALB controller's customer-managed
+policy), and the ACK EKS controller binds them to their ServiceAccounts on
+the dev cluster. The dev cluster therefore assumes its IAM roles through
+EKS Pod Identity and holds no AWS credentials of its own.
+
 The controllers authenticate with the same SOPS-encrypted static credential
 pattern as CAPA
 (`mgmt/aws/infrastructure/ack-controllers/aws-credentials.sops.yaml`). The
-kind management cluster runs on kind (not EKS), so IRSA/Pod Identity is not
-available there; static credentials via SOPS is the established pattern.
+bootstrap cluster runs on kind (not EKS), so IRSA/Pod Identity is not
+available before the pivot; static credentials via SOPS is the established
+pattern.
 
 ### Least-privilege trade-off: the static principal's union scope
 
-Before #346 each workload-cluster controller assumed its own scoped IAM role
-via EKS Pod Identity (`krops-ack-s3-controller`, `krops-ack-rds-controller`,
-`krops-ack-iam-controller`, declared in the deleted
-`mgmt/aws/infrastructure/ack-pod-identity/`). Moving the controllers to the
-management cluster deleted those roles, so the single static principal behind
-`aws-credentials` now needs the **union** of their former policies (granted
-outside this repo, same as the CAPA permissions):
+Before the pivot each workload-cluster controller assumed its own scoped
+IAM role via EKS Pod Identity. Moving the controllers to the management
+cluster meant the single static principal behind `aws-credentials` needs
+the **union** of its former policies (granted outside this repo, same as
+the CAPA permissions):
 
-- **S3**: `s3:ListAllMyBuckets` + `s3:GetBucketLocation` on `*`, and bucket
-  management on `arn:aws:s3:::krops-*` only: `s3:CreateBucket`,
-  `s3:DeleteBucket`, `s3:GetBucket*`/`s3:PutBucket*`,
-  `s3:DeleteBucketPolicy`, encryption/lifecycle/replication/accelerate/
-  analytics/inventory/metrics/intelligent-tiering configuration Get+Put,
-  `s3:ListBucket`, `s3:TagResource` (the `CreateBucket` tagSet is authorized
-  against it, see #352/#353) and `s3:DeleteBucketTagging` (tag-removal
-  drift). `s3:UntagResource`/`s3:ListTagsForResource` are not needed: the ACK
-  S3 controller only calls them for directory buckets, which krops does not
-  create
-- **RDS**: `rds:Describe*` + `rds:ListTagsForResource` on `*`; instance
-  management (`rds:CreateDBInstance`/`ModifyDBInstance`/`DeleteDBInstance`/
-  `RebootDBInstance`/`StartDBInstance`/`StopDBInstance`,
-  `rds:AddTagsToResource`/`RemoveTagsFromResource`) on
-  `arn:aws:rds:*:*:*:krops-*`; `secretsmanager:CreateSecret`/`TagResource`/
-  `RotateSecret` on `arn:aws:secretsmanager:*:*:secret:rds!*` (required by
-  `manageMasterUserPassword`); `kms:DescribeKey` on `*` plus
-  `kms:CreateGrant`/`ListGrants`/`RevokeGrant` restricted with
-  `kms:GrantIsForAWSResource` (so RDS can use the default `aws/rds` and
-  `aws/secretsmanager` KMS keys; without these `CreateDBInstance` fails with
-  `KMSKeyNotAccessibleFault`); `iam:CreateServiceLinkedRole` scoped to
-  `AWSServiceRoleForRDS` (needed the first time an RDS instance is created
-  in the account)
 - **IAM**: role management (`iam:CreateRole`/`DeleteRole`/`GetRole`/
   `UpdateRole`/`UpdateRoleDescription`/`UpdateAssumeRolePolicy`/
   `PutRolePolicy`/`DeleteRolePolicy`/`GetRolePolicy`/`ListRolePolicies`/
-  `ListAttachedRolePolicies`/`ListInstanceProfilesForRole`/`TagRole`/
-  `UntagRole`/`ListRoleTags`) scoped to `arn:aws:iam::*:role/krops-*`, plus
-  the user actions for the `krops-reader` console user
+  `AttachRolePolicy`/`DetachRolePolicy`/`ListAttachedRolePolicies`/
+  `ListInstanceProfilesForRole`/`TagRole`/`UntagRole`/`ListRoleTags`) scoped
+  to `arn:aws:iam::*:role/truehear-*`; customer-managed policy management
+  (`iam:CreatePolicy`/`DeletePolicy`/`GetPolicy`/`GetPolicyVersion`/
+  `CreatePolicyVersion`/`DeletePolicyVersion`/`ListPolicyVersions`/
+  `TagPolicy`/`UntagPolicy`) scoped to `arn:aws:iam::*:policy/truehear-*`;
+  plus the user actions for the `krops-reader` console user
   (`iam:CreateUser`/`PutUserPolicy`/`GetUser`/`GetUserPolicy`/`TagUser`)
+- **EKS**: Pod Identity association management
+  (`eks:CreatePodIdentityAssociation`/`DescribePodIdentityAssociation`/
+  `UpdatePodIdentityAssociation`/`DeletePodIdentityAssociation`/
+  `ListPodIdentityAssociations`/`TagResource`/`UntagResource`) on
+  `arn:aws:eks:eu-north-1:*:cluster/default_eu-north-1-dev-control-plane` and
+  `arn:aws:eks:eu-north-1:*:podidentityassociation/default_eu-north-1-dev-control-plane/*`,
+  and `iam:PassRole` on `arn:aws:iam::*:role/truehear-*` with
+  `iam:PassedToService: pods.eks.amazonaws.com`
 
 The trade-off is real: name-scoped `iam:CreateRole` + `iam:PutRolePolicy` is
 still a privilege-escalation surface (any permission can be granted to a
-role, as long as it is named `krops-*`), and the union now sits on one
-long-lived static principal instead of three short-lived pod-identity
+role, as long as it is named `truehear-*`), and the union now sits on one
+long-lived static principal instead of short-lived pod-identity
 sessions. Accepted because the management cluster is already the only
 cluster with static AWS credentials in Git and already owns every `Cluster`
-object; the workload clusters shed their last credential and controller in
+object; the dev cluster sheds its last credential and controller in
 exchange.
 
-## Per-cluster read-only IAM roles
+## Pod Identity roles for the dev cluster
 
-`mgmt/aws/infrastructure/workload-resources/role.yaml` has the management
-cluster's ACK IAM controller create one read-only IAM role per workload
-cluster (`krops-<cluster>-reader`). IAM is global, so the cluster name is
-part of the role name to keep the two clusters from fighting over one role:
+`mgmt/aws/infrastructure/dev-pod-identity/` has the management cluster's
+ACK IAM controller create the two roles the dev cluster's platform
+controllers assume, and its ACK EKS controller create the associations
+that bind each role to one ServiceAccount:
 
-- trust policy: the AWS account root (`arn:aws:iam::<account>:root`,
-  `sts:AssumeRole`): any principal in the account that is itself allowed to
-  assume the role can use it
-- read-only permissions covering the resources this repo creates on **both**
-  clusters: `krops-*` S3 buckets (bucket + object reads) and `krops-*`
-  RDS instances (`rds:DescribeDBInstances`, `rds:ListTagsForResource`:
-  only Describe actions that support resource-level scoping)
+| Association CR | Role | Namespace | ServiceAccount |
+|---|---|---|---|
+| `truehear-dev-ebs-csi` | `truehear-dev-ebs-csi` | `kube-system` | `ebs-csi-controller-sa` |
+| `truehear-dev-aws-load-balancer-controller` | `truehear-dev-aws-load-balancer-controller` | `kube-system` | `aws-load-balancer-controller` |
+
+- kind: `eks.services.k8s.aws/v1alpha1 PodIdentityAssociation`, declared in
+  the `ack-system` namespace of the management cluster
+  (`dev-pod-identity/associations.yaml`), `clusterName`
+  `default_eu-north-1-dev-control-plane` — the EKS name CAPA gives the dev
+  control plane
+- trust policy: the `pods.eks.amazonaws.com` service with
+  `sts:AssumeRole` + `sts:TagSession` (Pod Identity's session-tagging
+  condition), declared on both roles (`dev-pod-identity/roles.yaml`)
+- policies:
+  - `truehear-dev-ebs-csi` attaches the AWS **managed** policy
+    `arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicyV2` — the V2 name was
+    verified against the account, so it is preferred over the V1
+  - `truehear-dev-aws-load-balancer-controller` gets a **customer-managed**
+    `iam.services.k8s.aws/v1alpha1 Policy` CR
+    (`dev-pod-identity/policies.yaml`) carrying the AWS Load Balancer
+    Controller's policy pinned to controller v3.5.0, the chart version the
+    workload layer installs (bump the policy document together with the
+    chart)
+
+Operator note: the associations' `Ready` condition message says
+`ResourceNotFoundException` until the dev control plane exists (and is
+ACTIVE with the `eks-pod-identity-agent` add-on); no action needed — Flux
+reconciles this Kustomization with `wait: false`, so the delay is not an
+error.
 
 ## Console access: the `krops-reader` IAM user
 
 `mgmt/aws/infrastructure/aws-global-iam/reader-user.yaml` has the
 **management** cluster's ACK IAM controller create one IAM `User`
 (`krops-reader`) whose only permission is `sts:AssumeRole` on
-`arn:aws:iam::*:role/krops-*-reader`: it can see nothing directly and is
-just a doorway into the per-cluster reader roles above.
+`arn:aws:iam::*:role/truehear-*`: it can see nothing directly and is
+just a doorway into the Pod Identity roles above.
 
 The ACK IAM controller has no `LoginProfile` resource, so the console
 password cannot be declared in Git. Set it **once** imperatively after the
@@ -100,16 +117,15 @@ Then, to browse the repo-created resources in the AWS console:
 1. Sign in at `https://<account-id>.signin.aws.amazon.com/console` as
    `krops-reader` (you will be prompted to set a new password on first
    login).
-2. Use **Switch Role** (account menu, top right) with the account ID and role
-   name `krops-eu-north-1-workload-reader` or
-   `krops-eu-west-1-workload-reader`, or use the direct link:
+2. Use **Switch Role** (account menu, top right) with the account ID and
+   the role's name, or use the direct link:
 
    ```
-   https://signin.aws.amazon.com/switchrole?roleName=krops-eu-north-1-workload-reader&account=<account-id>
+   https://signin.aws.amazon.com/switchrole?roleName=truehear-dev-ebs-csi&account=<account-id>
    ```
 
-3. Browse the `krops-*` S3 buckets and RDS instances (switch the console
-   region to eu-north-1/eu-west-1 for the databases).
+3. Browse the repo-created resources (switch the console region to
+   eu-north-1).
 
 ## CI access: GitHub Actions OIDC and the `krops-ci-e2e` role
 
@@ -146,39 +162,39 @@ the sweep surface from `teardown.sh` / `bootstrap-rs/src/teardown.rs`, and
 the ACK surface from the prerequisites in [AWS environment](./aws.md).
 
 - EC2/VPC (`krops-ci-e2e-capa-ec2`): the full describe set; creates only in
-  `eu-north-1` and `eu-west-1` (`aws:RequestedRegion`); mutations (delete,
-  modify, attach/detach, associate, authorize/revoke, release) only on
-  resources carrying a `sigs.k8s.io/cluster-api-provider-aws/role` tag
-  (CAPA-created), plus security-group rule and delete operations on the
-  EKS-created cluster security groups (`aws:eks:cluster-name` = `default_*`);
+  `eu-north-1` (`aws:RequestedRegion`); mutations (delete, modify,
+  attach/detach, associate, authorize/revoke, release) only on resources
+  carrying a `sigs.k8s.io/cluster-api-provider-aws/role` tag (CAPA-created),
+  plus security-group rule and delete operations on the EKS-created cluster
+  security groups (`aws:eks:cluster-name` = `default_*`);
   `CreateTags`/`DeleteTags` only with CAPA tag keys.
 - EKS (`krops-ci-e2e-capa-eks`): cluster, nodegroup, addon, and access-entry
-  CRUD scoped to `default_*` clusters in the two e2e regions (the non-krops
-  `training` cluster is out of scope); the two EKS service-linked roles;
-  CAPA per-cluster IAM roles on `capa_*` and the cluster name prefixes;
-  `iam:PassRole` to `eks.amazonaws.com` for the clusterawsadm stack roles
-  and `capa_*`; SSM optimized-AMI parameters, KMS grants on
+  CRUD scoped to `default_*` clusters (the non-krops `training` cluster is
+  out of scope); the two EKS service-linked roles; CAPA per-cluster IAM
+  roles on `capa_*` and the cluster name prefixes; `iam:PassRole` to
+  `eks.amazonaws.com` for the clusterawsadm stack roles and `capa_*`; SSM
+  optimized-AMI parameters, KMS grants on
   `alias/cluster-api-provider-aws-*`, Secrets Manager on
   `aws.cluster.x-k8s.io/*` secrets.
-- Management ACK controllers (`krops-ci-e2e-ack-mgmt`): `krops-*` IAM role
-  and user management (the `krops-ack-*` roles, the `krops-*-reader` roles,
-  the `krops-reader` user) and pod identity associations on `default_*`
+- Management ACK controllers (`krops-ci-e2e-ack-mgmt`): `truehear-*` IAM
+  role and policy management (the `truehear-dev-*` roles, the
+  `krops-reader` user) and pod identity associations on `default_*`
   clusters. No OIDC provider management anywhere: IRSA is unused (pod
   identity instead), which also protects the GitHub OIDC provider itself.
-- Orphan sweep (`krops-ci-e2e-sweep`): `sts:GetCallerIdentity`; RDS delete
-  on `krops-*` instances; S3 version purge and bucket delete on `krops-*`
-  buckets; IAM cleanup on `krops-*`/`capa_*` roles, their instance profiles,
-  and `krops-*` users; CloudFormation delete on the
-  `cluster-api-provider-aws-sigs-k8s-io` stack in both regions.
+- Orphan sweep (`krops-ci-e2e-sweep`): `sts:GetCallerIdentity`; IAM cleanup
+  on `truehear-*`/`krops-*`/`capa_*` roles, their instance profiles, and
+  `krops-*` users; CloudFormation delete on the
+  `cluster-api-provider-aws-sigs-k8s-io` stack.
 - Self-escalation guard (`krops-ci-e2e-self-deny`): explicit Deny on the
   role's own ARN for `PutRolePolicy`, `DeleteRolePolicy`,
   `AttachRolePolicy`, `DetachRolePolicy`, `UpdateAssumeRolePolicy`,
-  `DeleteRole`, and permissions-boundary changes. The `role/krops-*` globs
-  in `ack-mgmt` and `sweep` match `krops-ci-e2e` itself; without this Deny a
-  workflow session could grant itself arbitrary inline permissions or widen
-  its own trust (verified with `simulate-principal-policy`: the four
-  escalation actions are now `explicitDeny`, lifecycle actions on other
-  `krops-*` roles remain `allowed`).
+  `DeleteRole`, and permissions-boundary changes. The `role/truehear-*`
+  glob in `ack-mgmt` and the `role/krops-*` globs in `sweep` match
+  `krops-ci-e2e` itself; without this Deny a workflow session could grant
+  itself arbitrary inline permissions or widen its own trust (verified
+  with `simulate-principal-policy`: the four escalation actions are now
+  `explicitDeny`, lifecycle actions on other `truehear-*` roles remain
+  `allowed`).
 
 Narrowed relative to the upstream CAPA policy, with the repo as ground
 truth: no `ec2:RunInstances`/`TerminateInstances` (no EC2 machine pools), no

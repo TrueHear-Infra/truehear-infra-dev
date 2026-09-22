@@ -24,29 +24,16 @@ KIND = re.compile(r"^kind:\s*(\S+)\s*$")
 
 # Actions each ACK controller needs to reconcile the CR kinds this repo
 # declares. Grounding:
-# - Bucket: the ACK S3 controller embeds the tagSet in CreateBucket (needs
-#   s3:TagResource) and removes drifted tags via DeleteBucketTagging.
-#   s3:UntagResource and s3:ListTagsForResource are directory-bucket-only
-#   and deliberately NOT required (issue #411, docs change in #410).
-# - DBInstance: tagging goes through rds:AddTagsToResource /
-#   RemoveTagsFromResource.
-# - Role/User: the ACK IAM controller's role/user management set.
+# - Role: the ACK IAM controller's role management set; the dev cluster's
+#   controller roles also attach the AWS-managed EBS CSI policy and the
+#   customer-managed ALB policy (iam:AttachRolePolicy/iam:DetachRolePolicy).
+# - Policy: the ACK IAM controller's customer-managed policy management set
+#   (the pinned ALB controller policy).
+# - PodIdentityAssociation: the ACK EKS controller's association management
+#   set, plus iam:PassRole for binding each role to its ServiceAccount.
+# - User: the ACK IAM controller's user management set (the retained
+#   krops-reader console user).
 REQUIRED_ACTIONS = {
-    "Bucket": [
-        "s3:CreateBucket",
-        "s3:DeleteBucket",
-        "s3:ListBucket",
-        "s3:GetBucketLocation",
-        "s3:TagResource",
-        "s3:DeleteBucketTagging",
-    ],
-    "DBInstance": [
-        "rds:CreateDBInstance",
-        "rds:ModifyDBInstance",
-        "rds:DeleteDBInstance",
-        "rds:AddTagsToResource",
-        "rds:RemoveTagsFromResource",
-    ],
     "Role": [
         "iam:CreateRole",
         "iam:DeleteRole",
@@ -54,6 +41,27 @@ REQUIRED_ACTIONS = {
         "iam:PutRolePolicy",
         "iam:DeleteRolePolicy",
         "iam:TagRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+    ],
+    "Policy": [
+        "iam:CreatePolicy",
+        "iam:DeletePolicy",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicyVersion",
+        "iam:ListPolicyVersions",
+        "iam:TagPolicy",
+    ],
+    "PodIdentityAssociation": [
+        "eks:CreatePodIdentityAssociation",
+        "eks:DescribePodIdentityAssociation",
+        "eks:UpdatePodIdentityAssociation",
+        "eks:DeletePodIdentityAssociation",
+        "eks:ListPodIdentityAssociations",
+        "eks:TagResource",
+        "iam:PassRole",
     ],
     "User": [
         "iam:CreateUser",
