@@ -171,6 +171,10 @@ resources. There is no app source code here, only declarative infrastructure.
 - `docs/`: detailed documentation (see the table in README.md).
   `docs/proposals/` holds design proposals under review (not yet decided or
   implemented); the docs site assembler includes that folder.
+- `runbooks/`: operator runbooks that document the live state of a branch
+  (one-time setup, lifecycle commands, verification, teardown). Not
+  Flux-reconciled and not part of the docs site; keep a runbook in step with
+  the branch it targets (see `runbook-sync`).
 - `mise.toml`: pinned tool versions and all task entrypoints.
   `mise.aws.toml` is the AWS tool layer (aws-cli, clusterawsadm),
   activated with `MISE_ENV=aws`. `mise.azure.toml` (azure-cli) and
