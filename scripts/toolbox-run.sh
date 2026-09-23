@@ -15,7 +15,7 @@ Env:
   TOOLBOX_IMAGE   image reference (default: ${TOOLBOX_IMAGE:-ghcr.io/polarsquad/krops-toolbox:latest};
                   build locally with: docker build -f bootstrap-rs/Dockerfile \\
                     -t krops-toolbox:dev . && TOOLBOX_IMAGE=krops-toolbox:dev)
-  KROPS_PROFILE aws | local-host | local-talos
+  KROPS_PROFILE aws | local-host
                   (default: the mise environment in use)
 EOF
   exit 2

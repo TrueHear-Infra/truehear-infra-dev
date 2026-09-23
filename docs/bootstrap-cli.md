@@ -70,8 +70,8 @@ krops-bootstrap teardown local-host     # local-host teardown
 
 - `PROFILE` is the CLI's retained positional name. Its value names a section
   under `[environments.*]` in
-  [`bootstrap.toml`](../bootstrap.toml). The checked-in environments are `aws`,
-  `local-host`, and `local-talos`.
+  [`bootstrap.toml`](../bootstrap.toml). The checked-in environments are
+  `aws` and `local-host`.
 - A non-empty `KROPS_PROFILE` overrides the positional profile. If
   neither is set, `bootstrap.default-environment` from `bootstrap.toml` is
   used.
@@ -127,8 +127,8 @@ pins together with their declarative counterparts. See
 | `REGISTRY_READY_RETRIES` | `120` | Local-host registry readiness attempts |
 | `LOCAL_RECONCILE_TIMEOUT` | `15m` | Local-host management and workload reconciliation waits |
 | `CONTAINER_ENGINE` | auto-detect Docker, then Podman | kind and registry engine |
-| `GIT_REPO_URL` | required for `aws` and `local-talos` | Management Flux Git source |
-| `GITHUB_TOKEN` | required for `aws` and `local-talos` | PAT with read access to the repository |
+| `GIT_REPO_URL` | required for `aws` | Management Flux Git source |
+| `GITHUB_TOKEN` | required for `aws` | PAT with read access to the repository |
 | `GITHUB_USER` | `git` | Basic-auth username paired with the PAT |
 | `AGE_KEY_FILE` | `age.agekey` | SOPS age private key; required for all environments (generated with `mise run sops-keygen` when absent); loaded into `sops-age` and `sops-age-resource-set` |
 | `AGE_PUBLIC_KEY` | derived from `AGE_KEY_FILE` | Public key override during secret creation; must match the key file's public key when both are known (preflight fails fast on a mismatch) |
