@@ -80,11 +80,8 @@ COPY mise.toml mise.aws.toml /opt/krops/
 RUN chmod +x /usr/local/bin/toolbox-entrypoint.sh
 
 # Install every tool the configs pin except the dev-only toolchains the
-# lifecycle never invokes (go, python, zarf: airgap builds run on the
-# host, not inside the toolbox). The aws layer (aws-cli, clusterawsadm)
-# installs too; credentials arrive at runtime. `mise x` is avoided here:
-# it auto-installs every tool in the env (including the dev-only zarf) and a
-# zarf auto-install failure would abort the build.
+# lifecycle never invokes (go: never invoked by the lifecycle). The aws
+# layer (aws-cli, clusterawsadm) installs too; credentials arrive at runtime.
 RUN cd /opt/krops \
     && mise install -y kind helm kubectl clusterctl flux2 sops age \
     && mise -E aws install -y aws-cli clusterawsadm \

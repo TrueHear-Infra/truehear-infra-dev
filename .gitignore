@@ -16,11 +16,6 @@ age.agekey
 local-workload.kubeconfig
 # Toolbox container kubeconfig state (scripts/toolbox-run.sh)
 .kube/
-airgap/archives/
-airgap/rendered/
-airgap/sbom/
-airgap/config-artifact/
-airgap/*.tar.zst
 
 # Hermes agent workspace (local plans, never part of the repo)
 .hermes/

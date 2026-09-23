@@ -13,9 +13,7 @@ name: toolbox-release
 # segfaults deterministically on the arm64 runner and blocked the v0.2.0
 # release (issue #254).
 #
-# Signing is cosign keyless via the sign job's GitHub OIDC identity (same
-# identity model as the air-gapped workflow's keyless-signed Zarf packages);
-# the SBOM is Syft, matching the Zarf bundle's per-component SBOMs.
+# Signing is cosign keyless via the sign job's GitHub OIDC identity; the SBOM is Syft.
 on:
   push:
     tags: ["v*"]
