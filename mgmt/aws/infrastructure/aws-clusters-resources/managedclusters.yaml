@@ -1,14 +1,7 @@
 # ── AWSManagedCluster – infrastructure resource for EKS clusters ──────────────
 # CAPA v1beta2: identity resolution is automatic via AWSClusterControllerIdentity.
-# No identityRef needed in the spec.
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
-kind: AWSManagedCluster
-metadata:
-  name: eu-north-1-dev
-  namespace: default
-spec: {}
----
-# Staging: same shape, its own VPC (CAPA creates one per managed cluster).
+# No identityRef needed in the spec. Staging gets its own VPC (CAPA creates one
+# per managed cluster).
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: AWSManagedCluster
 metadata:

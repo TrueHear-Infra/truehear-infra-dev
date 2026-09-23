@@ -3,7 +3,7 @@
 # Per-environment FluxInstance ConfigMaps, applied to each TrueHear workload
 # cluster by the ClusterResourceSets below (selector: fluxcd=enabled,
 # environment=<env>). One ConfigMap and one ClusterResourceSet per
-# environment level (dev, staging; prod when it exists).
+# environment level (staging; prod when it exists).
 #
 # Each workload cluster runs its own Flux instance syncing its sync root
 # workload/eu-north-1-<env>. That root composes workload/platform (ALB
@@ -16,64 +16,6 @@
 # VPC_ID and the ACM ARN are committed after the first bootstrap; see
 # docs/aws.md "Commit the identifiers".
 # ══════════════════════════════════════════════════════════════════════════════
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: flux-instance-dev
-  namespace: default
-data:
-  flux-instance.yaml: |
-    apiVersion: v1
-    kind: Namespace
-    metadata:
-      name: flux-system
-    ---
-    apiVersion: v1
-    kind: ConfigMap
-    metadata:
-      name: cluster-vars
-      namespace: flux-system
-    data:
-      AWS_REGION: "eu-north-1"
-      CLUSTER_NAME: "eu-north-1-dev"
-      EKS_CLUSTER_NAME: "default_eu-north-1-dev-control-plane"
-      AWS_ACCOUNT_ID: "974771261200"
-      ENVIRONMENT: "dev"
-      VPC_ID: "REPLACE_AFTER_FIRST_BOOTSTRAP"
-      KEYCLOAK_HOSTNAME: "auth.dev.truehearkiosk.com"
-      KEYCLOAK_ACM_CERTIFICATE_ARN: "REPLACE_WITH_ACM_CERT_ARN"
-    ---
-    apiVersion: fluxcd.controlplane.io/v1
-    kind: FluxInstance
-    metadata:
-      name: flux
-      namespace: flux-system
-      annotations:
-        fluxcd.controlplane.io/reconcileEvery: "1h"
-        fluxcd.controlplane.io/reconcileTimeout: "5m"
-    spec:
-      distribution:
-        version: "2.x"
-        registry: "ghcr.io/fluxcd"
-        artifact: "oci://ghcr.io/controlplaneio-fluxcd/flux-operator-manifests"
-      components:
-        - source-controller
-        - kustomize-controller
-        - helm-controller
-        - notification-controller
-      cluster:
-        type: kubernetes
-        size: small
-        multitenant: false
-        networkPolicy: true
-        domain: "cluster.local"
-      sync:
-        kind: GitRepository
-        url: "https://github.com/TrueHear-Infra/truehear-infra-dev"
-        ref: "refs/heads/main"
-        path: "workload/eu-north-1-dev"
-        pullSecret: "flux-github-pat"
----
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -140,25 +82,6 @@ data:
 # carries the matching `environment` label. ApplyOnce: a rotated PAT or age
 # key needs a manual re-apply on the workload cluster.
 # ══════════════════════════════════════════════════════════════════════════════
-apiVersion: addons.cluster.x-k8s.io/v1beta1
-kind: ClusterResourceSet
-metadata:
-  name: flux-instance-dev
-  namespace: default
-spec:
-  clusterSelector:
-    matchLabels:
-      fluxcd: enabled
-      environment: dev
-  strategy: ApplyOnce
-  resources:
-    - kind: ConfigMap
-      name: flux-instance-dev
-    - kind: Secret
-      name: flux-pull-secret
-    - kind: Secret
-      name: sops-age-resource-set
----
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
 metadata:

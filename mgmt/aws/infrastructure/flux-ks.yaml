@@ -94,27 +94,6 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: dev-pod-identity
-  namespace: flux-system
-spec:
-  interval: 5m
-  retryInterval: 2m
-  timeout: 5m
-  prune: true
-  # wait: false — the PodIdentityAssociation CRs stay not-Ready until the dev
-  # EKS control plane exists (minutes after first apply); ordering only needs
-  # the ACK CRDs, which dependsOn + ack-controllers' wait: true guarantees.
-  wait: false
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./mgmt/aws/infrastructure/dev-pod-identity
-  dependsOn:
-    - name: ack-controllers
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
   name: staging-pod-identity
   namespace: flux-system
 spec:
@@ -122,8 +101,9 @@ spec:
   retryInterval: 2m
   timeout: 5m
   prune: true
-  # wait: false for the same reason as dev-pod-identity: the associations
-  # stay not-Ready until the staging EKS control plane exists.
+  # wait: false: the PodIdentityAssociation CRs stay not-Ready until the
+  # staging EKS control plane exists (minutes after first apply); ordering only
+  # needs the ACK CRDs, which dependsOn + ack-controllers' wait: true guarantees.
   wait: false
   sourceRef:
     kind: GitRepository
