@@ -1,0 +1,11 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: truehear-redis-cluster-chart
+  namespace: redis
+spec:
+  interval: 1h
+  url: oci://krops-registry:5000/charts/truehear-redis-cluster
+  ref:
+    tag: "0.3.0"
+  insecure: true

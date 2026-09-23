@@ -11,6 +11,7 @@ Related operational guides:
 
 - [Local-host Vault and backend authentication](vault-local-host.md)
 - [Local-host RabbitMQ](rabbitmq-local-host.md)
+- [Local-host Redis Cluster](redis-local-host.md)
 - [Local Docker IP recovery](recovery.md)
 - [Local OCI artifact rules](rules.md)
 

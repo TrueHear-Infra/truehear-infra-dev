@@ -7,3 +7,4 @@ resources:
   - vault/flux-ks.yaml
   - backend/flux-ks.yaml
   - rabbitmq/flux-ks.yaml
+  - redis/flux-ks.yaml

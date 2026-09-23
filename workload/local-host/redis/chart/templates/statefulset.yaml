@@ -1,0 +1,159 @@
+{{- $name := include "truehear-redis.fullname" . -}}
+{{- $replicas := required "Set replicaCount in the environment values file" .Values.replicaCount -}}
+{{- if lt (int $replicas) 1 -}}
+{{- fail "replicaCount must be positive" -}}
+{{- end -}}
+{{- $storageClass := required "Set persistence.storageClassName in the environment values file" .Values.persistence.storageClassName -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "truehear-redis.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: truehear-platform
+spec:
+  serviceName: {{ $name }}-headless
+  replicas: {{ $replicas }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: {{ .Values.rollout.partition }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "truehear-redis.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "truehear-redis.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cache
+        app.kubernetes.io/part-of: truehear-platform
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if .Values.acl.enabled }}
+        {{- $aclSecret := lookup "v1" "Secret" .Release.Namespace .Values.acl.secretName }}
+        {{- $aclVersion := "offline-preview" }}
+        {{- if $aclSecret }}
+        {{- $aclVersion = $aclSecret.metadata.resourceVersion }}
+        {{- end }}
+        truehear.io/acl-secret-version: {{ $aclVersion | quote }}
+        {{- end }}
+    spec:
+      serviceAccountName: redis
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          workingDir: /data
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              exec redis-server /etc/redis/config/redis.conf \
+                --cluster-announce-ip "$POD_IP" \
+                --cluster-announce-hostname "$POD_NAME.{{ $name }}-headless.$POD_NAMESPACE.svc.cluster.local" \
+                --cluster-announce-port 0 \
+                --cluster-announce-tls-port {{ .Values.service.redisPort }} \
+                --cluster-announce-bus-port {{ .Values.service.clusterBusPort }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          ports:
+            - name: redis-tls
+              containerPort: {{ .Values.service.redisPort }}
+              protocol: TCP
+            - name: cluster-bus
+              containerPort: {{ .Values.service.clusterBusPort }}
+              protocol: TCP
+          startupProbe:
+            tcpSocket:
+              port: redis-tls
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            tcpSocket:
+              port: redis-tls
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: redis-tls
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/redis/config
+              readOnly: true
+            - name: tls
+              mountPath: /etc/redis/tls
+              readOnly: true
+            - name: auth
+              mountPath: /etc/redis/auth
+              readOnly: true
+            {{- if .Values.acl.enabled }}
+            - name: acl
+              mountPath: /etc/redis/acl
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}-config
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+            defaultMode: 0440
+        - name: auth
+          secret:
+            secretName: {{ .Values.auth.secretName }}
+            items:
+              - key: {{ .Values.auth.secretKey }}
+                path: redis-auth.conf
+            defaultMode: 0440
+        {{- if .Values.acl.enabled }}
+        - name: acl
+          secret:
+            secretName: {{ required "Set acl.secretName when acl.enabled=true" .Values.acl.secretName | quote }}
+            items:
+              - key: {{ required "Set acl.secretKey when acl.enabled=true" .Values.acl.secretKey | quote }}
+                path: users.conf
+            defaultMode: 0440
+        {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: {{ $storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}

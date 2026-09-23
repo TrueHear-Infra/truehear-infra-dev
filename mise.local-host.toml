@@ -106,6 +106,56 @@ echo "==> Pushing ${CHART_NAME}:${CHART_VERSION} to ${CHART_REGISTRY}"
 helm push "$CHART_PACKAGE" "$CHART_REGISTRY" --plain-http
 '''
 
+[tasks.redis-chart-push]
+description = "Package and push the TrueHear Redis Cluster chart to the local registry"
+run = '''
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) \
+  || { echo "ERROR: not inside a Git repository" >&2; exit 1; }
+cd "$REPO_ROOT"
+
+REGISTRY_PORT="${REGISTRY_PORT:-5001}"
+REGISTRY_HOST="${REGISTRY_HOST:-localhost}"
+CHART_PATH="workload/local-host/redis/chart"
+CHART_REGISTRY="oci://${REGISTRY_HOST}:${REGISTRY_PORT}/charts"
+
+if ! curl --fail --silent --show-error \
+  "http://${REGISTRY_HOST}:${REGISTRY_PORT}/v2/" >/dev/null; then
+  echo "ERROR: local registry is unavailable at ${REGISTRY_HOST}:${REGISTRY_PORT}" >&2
+  echo "       Start it with: scripts/toolbox-run.sh bootstrap local-host" >&2
+  exit 1
+fi
+
+CHART_NAME=$(helm show chart "$CHART_PATH" | awk '$1 == "name:" { print $2 }')
+CHART_VERSION=$(helm show chart "$CHART_PATH" | awk '$1 == "version:" { print $2 }')
+if [ -z "$CHART_NAME" ] || [ -z "$CHART_VERSION" ]; then
+  echo "ERROR: cannot determine the Redis chart name or version" >&2
+  exit 1
+fi
+
+PACKAGE_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/redis-chart.XXXXXX")
+cleanup_package_root() {
+  rm -rf "$PACKAGE_ROOT"
+}
+trap cleanup_package_root EXIT
+
+helm lint "$CHART_PATH" --strict \
+  --set fullnameOverride=redis \
+  --set replicaCount=6 \
+  --set persistence.storageClassName=standard \
+  --set persistence.size=1Gi \
+  --set acl.enabled=true \
+  --set acl.secretName=redis-backend-acl \
+  --set acl.secretKey=users.conf
+
+helm package "$CHART_PATH" --destination "$PACKAGE_ROOT"
+CHART_PACKAGE="${PACKAGE_ROOT}/${CHART_NAME}-${CHART_VERSION}.tgz"
+test -f "$CHART_PACKAGE" \
+  || { echo "ERROR: chart package was not created: $CHART_PACKAGE" >&2; exit 1; }
+
+echo "==> Pushing ${CHART_NAME}:${CHART_VERSION} to ${CHART_REGISTRY}"
+helm push "$CHART_PACKAGE" "$CHART_REGISTRY" --plain-http
+'''
+
 [tasks.kubeconfigs]
 description = "Export the local CAPD workload-cluster kubeconfig"
 run = '''

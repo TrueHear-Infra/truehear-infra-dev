@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - redis-tls.sops.yaml
+  - redis-auth.sops.yaml
+  - redis-backend-acl.sops.yaml
+  - chart-source.yaml
+  - helmrelease.yaml

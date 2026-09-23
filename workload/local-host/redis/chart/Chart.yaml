@@ -1,0 +1,5 @@
+apiVersion: v2
+name: truehear-redis-cluster
+description: TrueHear-owned Redis Cluster Kubernetes release
+type: application
+version: 0.3.0

@@ -1,0 +1,22 @@
+apiVersion: v1
+data:
+    redis-auth.conf: ENC[AES256_GCM,data:xHu7a78j/4A4xpaSke7gUw1/cLhcy0aR8MH/JeuxyLSZ5XC1ZusFlyf4eELRu9M7VM36s/tH81OYSRtGkttJoZfBTcXQ1MoehCVzZ/WVtavUWbCd5z1/OB12vK/+TYtpZbYtmwzAyUzpPbj4oOFA4gWtZqhZdIk7B7YaBl4nsywg8DhMOhnzBmAmHoL4DONeF3yCMLpriHpY+gEQiUfEpe8ExOr14n+L0u3wMnVDqrPFP7T1CKTY1IeZmBTCmZkG0ynJS2TL5K7Cqyiw,iv:to92YXlT9toVIseku2tuN6JyahYCLrY9p88VkBlAmac=,tag:GbhEh2tFMzziN6LLEJEYxQ==,type:str]
+kind: Secret
+metadata:
+    name: redis-auth
+    namespace: redis
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBNWUd0aXA2bEdpcDhFVmRT
+            eXpVeTBZSXdTL293L1BLYkxlaHIrR2N6RlFZCmJlNkpvV3piV2lmNGR6T0JwR1BP
+            UXZYM2JleXdvajlkeS9WdDdnbjVianMKLS0tIDVJbXhIRVFPMzBUTlhCSDR1TlRm
+            OFJrYjJWd2l2T2xIMmg4SVUyS3graU0KXMinft4qzyQC1RpqRvfmLsNGNlZAQChN
+            F5/pJJ6ZcsGigkpLnc0t4O+kSJC/C4BxeFvtUYoH/scsBYS32aK9yw==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1rnpytnyvs6r8wcf740tp47wjkcqap6szqnapewuhw3vnytelvcvqwgmv0h
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-09-23T10:45:35Z"
+    mac: ENC[AES256_GCM,data:ZUcUGHCaCbzvDvy/rjyIk8YNG11aHdKJw1GhO5Oqzu3RbdCaAE8lEGbhl+YG4Odhgo22sMoYVkS1kwYjJLA0TCCvjSOW3nM2NhRk0xsYvdm7416rYHo3TQreO0wk+/Xz1er+9R1uSYIGkqLflE5jcKvNPpx/ClFfkyMyqchy3CM=,iv:aedOMD1nr5r0VNtWJMi36jmWAIFraIu3p4hS3kEHhq0=,tag:xDm6KFC4wxmAnvFN/umrcA==,type:str]
+    version: 3.13.3
