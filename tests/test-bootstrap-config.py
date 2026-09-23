@@ -26,12 +26,10 @@ CHART_MANIFESTS = {
     "cert-manager": [
         "mgmt/aws/infrastructure/cert-manager/helmrelease.yaml",
         "mgmt/local-host/infrastructure/cert-manager/helmrelease.yaml",
-        "mgmt/local-talos/infrastructure/cert-manager/helmrelease.yaml",
     ],
     "capi-operator": [
         "mgmt/aws/infrastructure/capi-operator/helmrelease.yaml",
         "mgmt/local-host/infrastructure/capi-operator/helmrelease.yaml",
-        "mgmt/local-talos/infrastructure/capi-operator/helmrelease.yaml",
     ],
 }
 
@@ -57,10 +55,10 @@ def main() -> int:
         return 1
 
     charts = config.get("charts", {})
-    for required_env in ("local-host", "aws", "local-talos"):
+    for required_env in ("local-host", "aws"):
         if required_env not in config.get("environments", {}):
             failures.append(f"environments.{required_env} section missing from bootstrap.toml")
-    for retired_env in ("azure", "gcp"):
+    for retired_env in ("azure", "gcp", "local-talos"):
         if retired_env in config.get("environments", {}):
             failures.append(f"environments.{retired_env} was retired; remove its section from bootstrap.toml")
     for chart, manifests in CHART_MANIFESTS.items():
@@ -85,7 +83,7 @@ def main() -> int:
         if not sync.is_dir():
             failures.append(f"environments.{name}.sync-path '{env.get('sync-path')}' is not a directory")
         # The sync source drives the FluxInstance seeding (issue #105):
-        # 'github' (GitRepository + PAT secret, aws and local-talos) or
+        # 'github' (GitRepository + PAT secret, aws) or
         # 'oci' (local registry artifact, local-host). The Rust enum must
         # agree with every declared value (unknown value = startup error).
         if "sync" not in env:

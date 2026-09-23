@@ -34,23 +34,6 @@ EXPECTED = {
     "mgmt/local-host/clusters/management/cluster.yaml": {
         "kindest/node",
     },
-    "mgmt/local-talos/capi-providers/capi-system/providers.yaml": {
-        "kubernetes-sigs/cluster-api",
-    },
-    "mgmt/local-talos/capi-providers/cabpt-system/provider.yaml": {
-        "sidero-community/cluster-api-bootstrap-provider-talos",
-    },
-    "mgmt/local-talos/capi-providers/cacppt-system/provider.yaml": {
-        "sidero-community/cluster-api-control-plane-provider-talos",
-    },
-    "mgmt/local-talos/capi-providers/capt-system/provider.yaml": {
-        "shrinedogg/cluster-api-provider-tinkerbell",
-    },
-    "mgmt/local-talos/clusters/management/cluster.yaml": {
-        "kubernetes/kubernetes",
-        "siderolabs/talos",
-    },
-    "mise.local-talos.toml": {"siderolabs/talos"},
     "mise.toml": {"astral-sh/uv"},
     "virtualized-e2e/lib/wiremock/deployment.yaml.tmpl": {"wiremock/wiremock"},
     "airgap/zarf.yaml": {

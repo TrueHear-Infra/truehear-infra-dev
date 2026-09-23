@@ -19,7 +19,7 @@ def test_readme_docs_links_keep_anchors():
 
 
 def test_readme_diagram_images_become_raw_links():
-    for name in ("aws-infra", "local-host-infra", "local-talos-infra"):
+    for name in ("aws-infra", "local-host-infra"):
         assert rewrite_readme_links(f"![l](docs/{name}.svg)") == (
             f"[![l]({name}.svg)]({raw(name)})"
         )
