@@ -287,7 +287,7 @@
       "customType": "regex",
       "description": "CAPI core, kubeadm, and CAPD provider versions (aws, local-host, local-talos)",
       "managerFilePatterns": [
-        "/(^|/)mgmt/(aws|local-host|local-talos)/capi-providers/(capi-system|capd-system)/.+\\.ya?ml$"
+        "/(^|/)mgmt/(aws|local-host|local-talos)/capi-providers/(capi-system|capd-system)/.+\\.ya?ml$/"
       ],
       "matchStrings": ["\\s{2}version: \"v(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "kubernetes-sigs/cluster-api",
@@ -311,7 +311,7 @@
       "customType": "regex",
       "description": "CAAPH (helm add-on) provider version",
       "managerFilePatterns": [
-        "/(^|/)mgmt/(aws|local-host)/capi-providers/caaph-system/.+\\.ya?ml$"
+        "/(^|/)mgmt/(aws|local-host)/capi-providers/caaph-system/.+\\.ya?ml$/"
       ],
       "matchStrings": ["\\s{2}version: \"v(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "kubernetes-sigs/cluster-api-addon-provider-helm",
