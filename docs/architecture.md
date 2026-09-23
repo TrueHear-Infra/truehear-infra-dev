@@ -18,10 +18,12 @@ Flux or CAPI reconciliation architecture.
 ## AWS environment (aws)
 
 The reference environment manages AWS infrastructure through the Kubernetes
-API: CAPA provisions EKS workload clusters, CAPI addons deliver per-cluster Flux
-instances, and ACK operators (S3, RDS, IAM) on the management cluster manage
-the per-cluster cloud resources with static SOPS credentials. Workload
-clusters run no controllers and hold no credentials.
+API: CAPA provisions the EKS management cluster and the TrueHear workload
+clusters, CAPI addons deliver per-cluster Flux instances, and ACK operators
+(IAM, EKS) on the management cluster create the per-environment Pod Identity
+roles, policies, and associations with static SOPS credentials. There are no
+S3 buckets or RDS instances in the account. Workload clusters run no
+controllers and hold no credentials.
 
 ![krops aws architecture](aws-infra.svg)
 
@@ -35,7 +37,7 @@ flowchart TD
         KIND --> SEC
     end
 
-    subgraph git["Git: github.com/polarsquad/krops"]
+    subgraph git["Git: github.com/TrueHear-Infra/truehear-infra-dev"]
         REPO[(main branch)]
     end
 
@@ -51,44 +53,44 @@ flowchart TD
         CAPIS[capi-system]
         CAPAS["capa-system (SOPS creds)"]
         CAAPH[caaph-system]
-        ACKC["ack-controllers (SOPS creds)<br/>ACK S3 + RDS + IAM controllers"]
-        WR["workload-resources<br/>Bucket + DBInstance + reader Role CRs"]
+        ACKC["ack-controllers (SOPS creds)<br/>ACK IAM + EKS controllers"]
+        DEVPI["dev-pod-identity<br/>truehear-dev-* roles + associations"]
+        STGPI["staging-pod-identity<br/>truehear-staging-* roles + associations"]
         AWSIAM["aws-global-iam<br/>krops-reader console user"]
         KONF["konflate (SOPS token)<br/>rendered Flux PR review"]
-        EUN[eu-north-1 cluster def]
-        EUW[eu-west-1 cluster def]
-        FA["flux-apps (SOPS pull secret)<br/>HelmChartProxy + ClusterResourceSets"]
+        EUN[eu-north-1 cluster defs<br/>management + dev + staging]
+        FA["flux-apps (SOPS pull secret)<br/>HelmChartProxy + per-env ClusterResourceSets"]
 
         FS --> CM --> CO
         CO --> CI --> AMC
         CO --> CAPIS --> CAPAS --> CAAPH --> FA
         CAPAS --> EUN
-        CAPAS --> EUW
         CAPAS --> MGMT
-        FS --> ACKC --> WR
+        FS --> ACKC --> DEVPI
+        ACKC --> STGPI
         ACKC --> AWSIAM
         FS --> KONF
     end
 
     REPO --> FS
 
-    subgraph aws["AWS"]
-        EKS1[EKS: eu-north-1-workload<br/>x86 + ARM node pools]
-        EKS2[EKS: eu-west-1-workload<br/>x86 + ARM node pools]
-        B1[(S3: krops-...-eu-north-1-workload-data)]
-        B2[(S3: krops-...-eu-west-1-workload-data)]
-        DB1[(RDS: krops-eu-north-1-workload-db)]
-        DB2[(RDS: krops-eu-west-1-workload-db)]
-        RD1[IAM Role: krops-eu-north-1-workload-reader<br/>trust: account root]
-        RD2[IAM Role: krops-eu-west-1-workload-reader<br/>trust: account root]
-        RUSER[IAM User: krops-reader<br/>console login, assumes reader roles]
+    subgraph aws["AWS: eu-north-1"]
+        EKS0[EKS: eu-north-1-management<br/>2 x t4g.medium (self-managed)]
+        EKS1[EKS: eu-north-1-dev<br/>3 x t3.medium, one VPC]
+        EKS2[EKS: eu-north-1-staging<br/>3 x t3.medium, one VPC]
+        DROLES[IAM Roles: truehear-dev-*<br/>trust: pods.eks.amazonaws.com (Pod Identity)]
+        SROLES[IAM Roles: truehear-staging-*<br/>trust: pods.eks.amazonaws.com (Pod Identity)]
+        RUSER[IAM User: krops-reader<br/>console login, assumes truehear-* roles]
     end
 
+    EUN -->|CAPA provisions| EKS0
     EUN -->|CAPA provisions| EKS1
-    EUW -->|CAPA provisions| EKS2
+    EUN -->|CAPA provisions| EKS2
     AWSIAM -->|creates| RUSER
-    RUSER -.->|sts:AssumeRole| RD1
-    RUSER -.->|sts:AssumeRole| RD2
+    RUSER -.->|sts:AssumeRole| DROLES
+    RUSER -.->|sts:AssumeRole| SROLES
+    DEVPI -->|ACK creates on the mgmt cluster| DROLES
+    STGPI -->|ACK creates on the mgmt cluster| SROLES
 
     FA -->|"HelmChartProxy: flux-operator<br/>CRS: FluxInstance + cluster-vars + pull secret"| WF1
     FA -->|same, per environment label| WF2
@@ -103,12 +105,6 @@ flowchart TD
 
     WF1 --> REPO
     WF2 --> REPO
-    WR -->|Bucket CR reconciled| B1
-    WR -->|Bucket CR reconciled| B2
-    WR -->|DBInstance CR reconciled| DB1
-    WR -->|DBInstance CR reconciled| DB2
-    WR -->|Role CR reconciled| RD1
-    WR -->|Role CR reconciled| RD2
 ```
 
 ### Reconciliation order (AWS management cluster)
@@ -116,10 +112,11 @@ flowchart TD
 Enforced with Flux `dependsOn`:
 
 ```
-cert-manager ▶ capi-operator ▶ capi-system ▶ capa-system ▶ clusters (eu-north-1, eu-west-1)
+cert-manager ▶ capi-operator ▶ capi-system ▶ capa-system ▶ clusters (eu-north-1)
                             │                            └▶ caaph-system ▶ flux-apps
                             └▶ capa-identity ▶ aws-managed-clusters
-ack-controllers ▶ workload-resources
+ack-controllers ▶ dev-pod-identity
+ack-controllers ▶ staging-pod-identity
 ack-controllers ▶ aws-global-iam
 konflate (no dependencies)
 ```
@@ -135,7 +132,7 @@ laptop.
 The management cluster also runs a single
 [konflate](https://github.com/home-operations/konflate) instance
 (`mgmt/aws/infrastructure/konflate/`), pointed at this repo
-(`github://polarsquad/krops`, rendering from the repo root). It renders each
+(`github://TrueHear-Infra/truehear-infra-dev`, rendering from the repo root). It renders each
 open PR at its merge-base and head and shows the diff of the *rendered* Flux
 output (blast radius, image changes, render failures, and danger lint)
 instead of the raw file diff. Results reach the PR two ways: a GitHub Actions
@@ -181,8 +178,7 @@ overlay and sync root are placeholders in this repo.
    in [Extending](./extending.md).
 
 See [AWS authentication & IAM](./aws-iam.md) for how the ACK controllers
-authenticate, and [Workload resources](./workload-resources.md) for what they
-create.
+authenticate and what the per-environment Pod Identity roles create.
 
 ## Azure environment (azure)
 
