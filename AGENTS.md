@@ -49,25 +49,6 @@ resources. There is no app source code here, only declarative infrastructure.
   management-only; no `addons/` (Talos ships its own CNI, no
   HelmChartProxy consumers). The wiring landed in #169 and the docs in
   #171; the remaining #105 item is the hardware acceptance run.
-- `mgmt/gcp/`: the GCP management variant (issue #72). Same component
-  layout as `mgmt/aws/` (`infrastructure/`, `capi-providers/`, `addons/`,
-  `clusters/`), synced from GitHub. CAPG v1.13.1
-  (`capi-providers/capg-system/`) provisions GKE clusters
-  (`GCPManaged*`); the Config Connector operator ships as a pinned verbatim
-  release bundle (`infrastructure/kcc-operator/`, version comment
-  `kcc-operator-version:`) and `tests/test-kcc-operator-pin.py` (in
-  `mise run validate` and CI) keeps every committed copy byte-identical and
-  matching the version comment: Renovate bumps the comment and the operator
-  image tag, and the gate then goes red until the whole release bundle is
-  re-downloaded (same "Renovate opens, human completes" posture as the
-  Talos images). Credentials: none at rest; Workload Identity Federation
-  through the `krops` pool with plain `external_account` Secrets
-  (`capg-wif-credentials`, `kcc-wif-credentials`), provider
-  `${GCP_WIF_PROVIDER:=mgmt}` (kind bootstrap overrides to `kind` via the
-  `gcp-wif` ConfigMap the `wif-federate` post-kind-create task creates; the
-  pivot pins `mgmt` via `pivot-manifest-vars`). Non-secret IDs live in
-  `gcp-vars` (flux-system) and the workload `cluster-vars`. Teardown is
-  manual until the live acceptance run.
 - `workload/`: synced by each WORKLOAD cluster's Flux. Layering:
   `base/` (vendored TrueHear service roots and charts from
   truehear-cloud-development, byte-identical, never edited in place;
@@ -76,15 +57,6 @@ resources. There is no app source code here, only declarative infrastructure.
   generated encrypted with `mise run truehear-env-secrets -- --env <env>`)
   -> `eu-north-1-<env>/` (sync root with the ordered Flux Kustomizations).
   `tests/test-workload-overlays.py` gates the cross-file invariants.
-  - `gcp-base/` (PR 2, issue #72): Config Connector (the same
-    pinned operator bundle as the management side; it ships its own webhook
-    certs, so no cert-manager) and the GCP resources
-    (PSA range + peering, storage bucket, Cloud SQL with IAM-only auth,
-    per-cluster reader GSA). `europe-north1-01/` points at it;
-    `tests/test-gcp-identity-chain.py` cross-checks the WIF
-    pool/provider/subject couplings against `mgmt/gcp/`.
-  - `<region>-01/`: per-cluster overlays for gcp (aws uses
-    `eu-north-1-<env>/` per the layering above).
 - `airgap/`: Zarf offline transfer bundle for the local-host profile.
   `zarf.yaml` is the authoritative image listing for the package and
   `images.txt` is the superset inventory (the `scripts/` preloads derive from
@@ -119,9 +91,8 @@ resources. There is no app source code here, only declarative infrastructure.
   `lib/wiremock/`, the `scenario-schema.json` Phase 3 shape,
   `sanitize_recording.py`, `assertions.py`); `<cloud>/wiremock/` carries one
   arm per cloud with only what differs (interception patches, boot stubs,
-  arm README). `aws/` is the reference arm; `gcp/`
-  is the second arm (CoreDNS-rewrite + SAN-cert interception
-  and WIF credential repoint from its Phase 0 spike). The kustomize
+  arm README). `aws/` is the only arm; `lib/` carries what a future arm
+  would share. The kustomize
   overlays here are built by `mise run validate` like the `mgmt`/`workload`
   ones.
 - `bootstrap-rs/`: `krops-bootstrap`, the Rust CLI that ports the imperative
@@ -151,12 +122,9 @@ resources. There is no app source code here, only declarative infrastructure.
   (one-time setup, lifecycle commands, verification, teardown). Not
   Flux-reconciled and not part of the docs site; keep a runbook in step with
   the branch it targets (see `runbook-sync`).
-  - `mise.toml`: pinned tool versions and all task entrypoints.
+- `mise.toml`: pinned tool versions and all task entrypoints.
   `mise.aws.toml` is the AWS tool layer (aws-cli, clusterawsadm),
-  activated with `MISE_ENV=aws`. `mise.gcp.toml` (gcloud, plus the
-  `gcp-bootstrap`, `wif-federate` and `kubeconfigs` tasks; gcloud state
-  lives in the gitignored `.gcloud/` shared with the toolbox) is the other
-  per-environment layer.
+  activated with `MISE_ENV=aws`.
   Helper tasks run inside the toolbox image via `--entrypoint mise`
   (issue #423); `validate` and `podinfo-port-forward` stay host tasks by
   design; `MISE_AUTO_INSTALL=0` is mandatory for in-toolbox runs and mise's
@@ -295,11 +263,9 @@ Load these only when the task touches their domain:
 
 - `docs/architecture.md`: reconciliation order, how workload apps are delivered.
 - `docs/bootstrap-cli.md`: the `krops-bootstrap` Rust CLI: interface, env knobs, pivot, parity status.
-- `docs/gcp.md`: the GCP environment: project prep, WIF credentials (no keys), GKE clusters, Config Connector on the workload cluster, upgrade rules.
 - `docs/extending.md`: adding a workload cluster, adding apps, adding other providers (Talos, k0smotron).
 - `docs/secrets.md`: SOPS + age setup, credential rotation.
 - `docs/konflate.md`: rendered PR review, CI gate, tokens, write-back.
 - `docs/aws-iam.md`: management-cluster ACK controllers (static SOPS credentials, union scope), reader roles, reader user.
 - `docs/operations.md`: quotas, configuration, bootstrap, verification.
-- `docs/workload-resources.md`: S3/RDS posture, known limitations.
 - `docs/airgap.md`: Zarf offline bundle for the local-host profile.
