@@ -19,7 +19,7 @@ Work is organized into numbered milestones that build on each other.
 |---|---|---|
 | 1-renovate-foundations | closed | Renovate as the hosted GitHub App, the central version catalog retired, a shared integration-test harness (`tests/renovate_harness.py`) |
 | 2-rust-bootstrap | closed | `krops-bootstrap`, the Rust CLI covering bootstrap, pivot, and teardown; `bootstrap.toml` as the repository-owned configuration; the toolbox container image |
-| 3-environments | open | `local-talos` wiring and docs are on `main`; the hardware acceptance run (#105) is pending. Azure via ASO (#71) and GCP via Config Connector (#72) are unstarted |
+| 3-environments | open | `local-talos` wiring and docs are on `main`; the hardware acceptance run (#105) is pending. GCP via Config Connector (#72) is unstarted |
 | 4-hardening | open | Air-gap supply chain (#80): digest pins everywhere, signed SBOMs, offline verification, transactional updates. The build, signing, and publication model needs a design decision first (#138) |
 
 Two facts follow from that table and shape what a contributor can rely on:
@@ -48,7 +48,7 @@ Labels mark the entry points:
   documentation and script fixes.
 - [`help wanted`](https://github.com/polarsquad/krops/labels/help%20wanted):
   larger items the maintainers are not actively working on, including the
-  Azure and GCP providers and the Python test tooling.
+  GCP provider and the Python test tooling.
 - `bug`, `documentation`, `enhancement` classify the change type.
 
 Issues without those labels are either in progress, blocked on a design
@@ -63,7 +63,7 @@ decision, or need an operator with AWS or bare-metal access.
   is not duplicated; milestone descriptions state ordering constraints where
   they exist.
 - Add a provider or environment. `docs/extending.md` documents the pattern
-  (CAPA reference wiring, then Azure, Talos, and k0smotron sections).
+  (CAPA reference wiring, then the Talos and k0smotron sections).
   `mgmt/local-talos/` is the worked example of a complete new environment
   landing as a series of small PRs (#155, #169, #171).
 - Improve the documentation. Every `docs/` page is fair game; the README
@@ -102,7 +102,7 @@ Requirements:
   (`mise x node@24 -- ...`).
 - Python 3 for the test scripts under `tests/` and `airgap/tests/`.
 
-Environment layers: `mise.aws.toml`, `mise.azure.toml`, `mise.gcp.toml`,
+Environment layers: `mise.aws.toml`, `mise.gcp.toml`,
 `mise.local-host.toml`, and `mise.local-talos.toml` add per-environment
 tools and helper tasks; they run in the toolbox image (`--entrypoint mise`,
 see `docs/operations.md`), and the host `mise install` is only needed for

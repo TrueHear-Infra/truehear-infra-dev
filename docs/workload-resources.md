@@ -46,10 +46,9 @@ instance per cluster (`krops-<cluster>-db`), zonal, with:
   user password is set in Git or the cluster. The flag enables IAM login but
   does not disable password login, and Cloud SQL has no instance-level switch
   for that, so the built-in `postgres` user still exists; it has no password
-  set here and nothing in the repo uses it. The AWS and Azure counterparts
-  are stricter: RDS uses `manageMasterUserPassword` (the password is
-  generated and held in Secrets Manager) and the Azure flexible server sets
-  `passwordAuth: Disabled` (Entra ID only)
+  set here and nothing in the repo uses it. The AWS counterpart is
+  stricter: RDS uses `manageMasterUserPassword` (the password is
+  generated and held in Secrets Manager)
 
 Connection:
 

@@ -99,22 +99,23 @@ pins together with their declarative counterparts. See
   decrypt `workload/**/*.sops.yaml` before reconciling.
 - `pivot-sops-secrets` (optional, list): SOPS-encrypted manifests the pivot
   decrypts with `SOPS_AGE_KEY_FILE` (defaults to `AGE_KEY_FILE`) and applies to
-  the target before `clusterctl move`. Used by `azure` for the ASO/CAPZ
-  credential Secret that moved objects reference by name.
+  the target before `clusterctl move`. Used by environments that need it
+  (none shipped currently).
 - `pivot-manifests` (optional, list): plain (unencrypted) manifests applied to
   the target before `clusterctl move`, after the provider CRs. The
-  workload-identity replacement for `pivot-sops-secrets`; used by `azure` for
-  the secret-free `aso-credentials` Secret (issue #236). `${VAR}` placeholders
+  workload-identity replacement for `pivot-sops-secrets`; used by
+  environments that need it (none shipped currently). `${VAR}` placeholders
   are substituted from the ConfigMaps in the Flux namespace of the bootstrap
-  cluster (the values its Flux reconciled, e.g. `azure-vars`); the pivot fails
+  cluster (the values its Flux reconciled); the pivot fails
   naming any placeholder no ConfigMap provides.
 - `post-kind-create-task` (optional, string): name of a mise task in the
   active profile (`mise.<env>.toml`) run once the kind bootstrap cluster
   exists, on both the create and healthy-reuse paths; a non-zero exit aborts
-  the bootstrap. `azure` uses it for Arc OIDC federation (issue #236).
+  the bootstrap. Environments that need it can wire a hook here
+  (none shipped currently).
 - `teardown.manual` (optional, string): when set, `krops-bootstrap teardown`
-  refuses to run for that environment and prints the text. `azure` uses it
-  until the live acceptance run defines the Azure orphan sweep.
+  refuses to run for that environment and prints the text. Used by
+  environments that need it (none shipped currently).
 
 ## Bootstrap and pivot controls
 
