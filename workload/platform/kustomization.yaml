@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Cluster platform services for the TrueHear EKS clusters. The EBS CSI driver
+# and the Pod Identity agent are EKS add-ons (declared by CAPA in
+# mgmt/aws/clusters/eu-north-1/<env>/cluster.yaml), so only the StorageClass and
+# the ALB controller live here.
+resources:
+  - storage-class
+  - aws-load-balancer-controller

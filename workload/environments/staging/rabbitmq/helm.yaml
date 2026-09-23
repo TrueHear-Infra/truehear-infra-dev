@@ -1,0 +1,33 @@
+---
+# No Role or token: rabbitmq_peer_discovery_k8s v2 (since RabbitMQ 4.1)
+# never queries the Kubernetes API; each node joins the -0 ordinal by DNS.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: rabbitmq
+  namespace: rabbitmq
+spec:
+  interval: 10m
+  timeout: 15m
+  chart:
+    spec:
+      chart: ./workload/base/rabbitmq/chart
+      sourceRef:
+        kind: GitRepository
+        name: flux-system
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: rabbitmq
+    replicaCount: 3
+    vhost: truehear
+    oidc:
+      enabled: false
+    persistence:
+      storageClassName: truehear-encrypted-gp3
+      size: 10Gi

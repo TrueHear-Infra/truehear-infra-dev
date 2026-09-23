@@ -2,38 +2,52 @@
 
 ## Adding a workload cluster
 
-1. Create `mgmt/aws/clusters/<region>/<env>/` with a `cluster.yaml`,
+1. Create `mgmt/aws/clusters/eu-north-1/<env>/` with a `cluster.yaml`,
    `kustomization.yaml` (set `namePrefix`), and `capi-nameref.yaml` (so CAPI
-   cross-references get the prefix applied; see the existing regions).
-2. Label the `Cluster` with `fluxcd: enabled` **and** `region: <region>`.
-3. Register it in `mgmt/aws/clusters/<region>/kustomization.yaml` and add a
+   cross-references get the prefix applied; see the existing environments).
+2. Label the `Cluster` with `fluxcd: enabled`, `region: eu-north-1`, **and**
+   `environment: <env>`.
+3. Register it in `mgmt/aws/clusters/eu-north-1/kustomization.yaml` and add a
    `Kustomization` entry in `mgmt/aws/clusters/flux-ks.yaml` with
    `dependsOn: [capa-system]`.
-4. In `mgmt/aws/addons/flux-apps/flux-instance.yaml`, add a per-region
-   FluxInstance ConfigMap (sync path `workload/<region>-01`, plus `cluster-vars`)
-   and a matching `ClusterResourceSet`.
-5. Add the cluster's `Bucket`, `DBInstance`, and reader `Role` CRs to
-   `mgmt/aws/infrastructure/workload-resources/` (literal account ID and
-   cluster name; use the `services.k8s.aws/region` annotation for
-   non-default regions) and add the reader role to `bootstrap.toml`'s
-   `teardown.global-iam-roles` and `tests/test-bootstrap-config.py`.
-6. Create `workload/<region>-01/kustomization.yaml` pointing at `../base`.
-7. Run `mise run validate`, commit, and push.
+4. Copy `mgmt/aws/infrastructure/<existing-env>-pod-identity/` to
+   `<env>-pod-identity/` and rename the roles and associations
+   `truehear-<env>-ebs-csi` and `truehear-<env>-aws-load-balancer-controller`
+   (the `clusterName` values become `default_eu-north-1-<env>-control-plane`);
+   register the new directory in `mgmt/aws/infrastructure/kustomization.yaml`
+   and its `flux-ks.yaml`.
+5. In `mgmt/aws/addons/flux-apps/flux-instance.yaml`, add the
+   `flux-instance-<env>` ConfigMap (sync path `workload/eu-north-1-<env>`,
+   the `cluster-vars` values, the placeholder `VPC_ID` and ACM ARN) and the
+   matching `ClusterResourceSet` (selector `environment: <env>`).
+6. Add the environment's teardown target to `bootstrap.toml`
+   (`[[environments.aws.teardown.aws-workloads]]`) and the
+   `truehear-<env>-*` roles to `[teardown].global-iam-roles` (and to
+   `teardown.sh`); `tests/test-bootstrap-config.py` cross-checks the two.
+7. Generate the environment's SOPS Secrets:
+   `mise run truehear-env-secrets -- --env <env>`.
+8. Create `workload/environments/<env>/` (mirror the staging overlay) and the
+   `workload/eu-north-1-<env>/` sync root (the six Flux Kustomizations).
+9. Keep `tests/test-workload-overlays.py` in sync (`EXPECTED_KS`,
+   `FLUX_ROOTS`), then run `mise run validate`, commit, and push.
 
 ## Adding apps to the workload clusters
 
-`workload/base/` is an intentionally empty overlay since issue #346 (the ACK
-controllers and their CRs moved to the management cluster). Follow the
-Podinfo pattern in `workload/local-host/`:
+The layering (see [TrueHear environments](./truehear-environments.md)):
+`workload/base/` (vendored, never edited in place) ->
+`workload/environments/<env>/` (overlay: values, Ingress, HelmReleases,
+Secrets via `mise run truehear-env-secrets -- --env <env>`) ->
+`workload/eu-north-1-<env>/` (sync root, Flux Kustomizations only).
 
-1. Create `workload/base/<app>/` with a `kustomization.yaml` listing the app's
-   manifests, and a `flux-ks.yaml` defining the Flux `Kustomization`
-   (path `./workload/base/<app>`; add `dependsOn` and `wait: true` as needed;
-   use `postBuild.substituteFrom: cluster-vars` for per-cluster values like
-   `${AWS_REGION}` and `${CLUSTER_NAME}`).
-2. Register the `flux-ks.yaml` in `workload/base/kustomization.yaml`.
-3. Run `mise run validate`, commit, and push. Every workload cluster picks it
-   up on its next sync.
+To add an app to a TrueHear environment:
+
+1. Vendor the neutral manifests or chart into `workload/base/<app>/`.
+2. Add `workload/environments/<env>/<app>/`: kustomization, HelmRelease for
+   charts, SOPS Secrets from the mise task.
+3. Add a Flux `Kustomization` for it in the sync root's `flux-ks.yaml`
+   (`dependsOn: [truehear-platform]`, sops decryption, health checks).
+4. Extend the expectations in `tests/test-workload-overlays.py`.
+5. Run `mise run validate`, commit, and push.
 
 ## Using other providers
 
@@ -75,11 +89,11 @@ CAPA is the provider this repo already runs; use it as the template:
   (`EKS=true,EKSEnableIAM=true,EKSAllowAddRoles=true,MachinePool=true`).
 - `aws-credentials.sops.yaml` carries `AWS_B64ENCODED_CREDENTIALS`, produced
   by the `aws-credentials` task (toolbox run, see [docs/aws.md](./aws.md)) (rotation: [docs/secrets.md](./secrets.md)).
-- Cluster definitions in `mgmt/aws/clusters/<region>/<env>/` use
+- Cluster definitions in `mgmt/aws/clusters/eu-north-1/<env>/` use
   `AWSManagedControlPlane` + `AWSManagedMachinePool` (EKS). The ACK
-  controllers and the per-cluster AWS resource CRs run on the management
+  controllers and the per-environment Pod Identity CRs run on the management
   cluster (`mgmt/aws/infrastructure/ack-controllers/` and
-  `mgmt/aws/infrastructure/workload-resources/`; see
+  `mgmt/aws/infrastructure/<env>-pod-identity/`; see
   [docs/aws-iam.md](./aws-iam.md)).
 
 ### Azure (CAPZ)

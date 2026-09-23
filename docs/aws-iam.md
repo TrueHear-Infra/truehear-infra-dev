@@ -7,12 +7,13 @@ All ACK controllers (IAM, EKS) run on the **management** cluster only
 need to run inside the cluster whose resources they manage; the workload
 clusters run no controllers and hold no credentials at all.
 
-The purpose here is Pod Identity plumbing for the TrueHear dev cluster's
-platform controllers: the management cluster's ACK IAM controller creates
-the two controller roles (and the ALB controller's customer-managed
-policy), and the ACK EKS controller binds them to their ServiceAccounts on
-the dev cluster. The dev cluster therefore assumes its IAM roles through
-EKS Pod Identity and holds no AWS credentials of its own.
+The purpose here is Pod Identity plumbing for each TrueHear workload cluster
+(dev, staging): the management cluster's ACK IAM controller creates the two
+controller roles (and the ALB controller's customer-managed policy) for
+every workload cluster, and the ACK EKS controller binds them to their
+ServiceAccounts on each cluster. The workload clusters therefore assume
+their IAM roles through EKS Pod Identity and hold no AWS credentials of
+their own.
 
 The controllers authenticate with the same SOPS-encrypted static credential
 pattern as CAPA
@@ -55,43 +56,44 @@ role, as long as it is named `truehear-*`), and the union now sits on one
 long-lived static principal instead of short-lived pod-identity
 sessions. Accepted because the management cluster is already the only
 cluster with static AWS credentials in Git and already owns every `Cluster`
-object; the dev cluster sheds its last credential and controller in
+object; the workload clusters shed their last credential and controller in
 exchange.
 
-## Pod Identity roles for the dev cluster
+## Pod Identity roles for the workload clusters (dev, staging)
 
-`mgmt/aws/infrastructure/dev-pod-identity/` has the management cluster's
-ACK IAM controller create the two roles the dev cluster's platform
+For each workload cluster, `mgmt/aws/infrastructure/<env>-pod-identity/`
+(`dev-pod-identity/`, `staging-pod-identity/`) has the management cluster's
+ACK IAM controller create the two roles that cluster's platform
 controllers assume, and its ACK EKS controller create the associations
 that bind each role to one ServiceAccount:
 
 | Association CR | Role | Namespace | ServiceAccount |
 |---|---|---|---|
-| `truehear-dev-ebs-csi` | `truehear-dev-ebs-csi` | `kube-system` | `ebs-csi-controller-sa` |
-| `truehear-dev-aws-load-balancer-controller` | `truehear-dev-aws-load-balancer-controller` | `kube-system` | `aws-load-balancer-controller` |
+| `truehear-<env>-ebs-csi` | `truehear-<env>-ebs-csi` | `kube-system` | `ebs-csi-controller-sa` |
+| `truehear-<env>-aws-load-balancer-controller` | `truehear-<env>-aws-load-balancer-controller` | `kube-system` | `aws-load-balancer-controller` |
 
 - kind: `eks.services.k8s.aws/v1alpha1 PodIdentityAssociation`, declared in
   the `ack-system` namespace of the management cluster
-  (`dev-pod-identity/associations.yaml`), `clusterName`
-  `default_eu-north-1-dev-control-plane` — the EKS name CAPA gives the dev
+  (`<env>-pod-identity/associations.yaml`), `clusterName`
+  `default_eu-north-1-<env>-control-plane`, the EKS name CAPA gives the
   control plane
 - trust policy: the `pods.eks.amazonaws.com` service with
   `sts:AssumeRole` + `sts:TagSession` (Pod Identity's session-tagging
-  condition), declared on both roles (`dev-pod-identity/roles.yaml`)
+  condition), declared on both roles (`<env>-pod-identity/roles.yaml`)
 - policies:
-  - `truehear-dev-ebs-csi` attaches the AWS **managed** policy
-    `arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicyV2` — the V2 name was
+  - `truehear-<env>-ebs-csi` attaches the AWS **managed** policy
+    `arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicyV2`, the V2 name was
     verified against the account, so it is preferred over the V1
-  - `truehear-dev-aws-load-balancer-controller` gets a **customer-managed**
+  - `truehear-<env>-aws-load-balancer-controller` gets a **customer-managed**
     `iam.services.k8s.aws/v1alpha1 Policy` CR
-    (`dev-pod-identity/policies.yaml`) carrying the AWS Load Balancer
+    (`<env>-pod-identity/policies.yaml`) carrying the AWS Load Balancer
     Controller's policy pinned to controller v3.5.0, the chart version the
     workload layer installs (bump the policy document together with the
     chart)
 
 Operator note: the associations' `Ready` condition message says
-`ResourceNotFoundException` until the dev control plane exists (and is
-ACTIVE with the `eks-pod-identity-agent` add-on); no action needed — Flux
+`ResourceNotFoundException` until the cluster's control plane exists (and is
+ACTIVE with the `eks-pod-identity-agent` add-on); no action needed, Flux
 reconciles this Kustomization with `wait: false`, so the delay is not an
 error.
 
@@ -118,10 +120,11 @@ Then, to browse the repo-created resources in the AWS console:
    `krops-reader` (you will be prompted to set a new password on first
    login).
 2. Use **Switch Role** (account menu, top right) with the account ID and
-   the role's name, or use the direct link:
+   the role's name (for example `truehear-dev-ebs-csi`, or the
+   `truehear-staging-*` equivalent), or use the direct link:
 
    ```
-   https://signin.aws.amazon.com/switchrole?roleName=truehear-dev-ebs-csi&account=<account-id>
+   https://signin.aws.amazon.com/switchrole?roleName=truehear-<env>-ebs-csi&account=<account-id>
    ```
 
 3. Browse the repo-created resources (switch the console region to

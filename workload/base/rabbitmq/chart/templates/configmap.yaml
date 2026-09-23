@@ -1,0 +1,63 @@
+{{- $name := include "truehear-rabbitmq.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "truehear-rabbitmq.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: truehear-platform
+data:
+  rabbitmq.conf: |
+    # Private TLS-only AMQP listener; clients authenticate with RabbitMQ users.
+    listeners.tcp = none
+    listeners.ssl.default = {{ .Values.service.amqpsPort }}
+    ssl_options.cacertfile = /etc/rabbitmq/tls/ca.crt
+    ssl_options.certfile = /etc/rabbitmq/tls/tls.crt
+    ssl_options.keyfile = /etc/rabbitmq/tls/tls.key
+    ssl_options.verify = verify_peer
+    ssl_options.fail_if_no_peer_cert = false
+
+    # The management UI and HTTP API are private and HTTPS-only.
+    management.ssl.port = {{ .Values.service.managementTlsPort }}
+    management.ssl.cacertfile = /etc/rabbitmq/tls/ca.crt
+    management.ssl.certfile = /etc/rabbitmq/tls/tls.crt
+    management.ssl.keyfile = /etc/rabbitmq/tls/tls.key
+
+    cluster_formation.peer_discovery_backend = k8s
+    cluster_partition_handling = pause_minority
+{{- if .Values.oidc.enabled }}
+
+    # OIDC is for human management access. Keep internal auth for AMQP clients
+    # and the bootstrap administrator while the browser flow is verified.
+    auth_backends.1 = oauth2
+    auth_backends.2 = internal
+    auth_oauth2.resource_server_id = {{ required "Set oidc.resourceServerId when OIDC is enabled" .Values.oidc.resourceServerId }}
+    auth_oauth2.issuer = {{ required "Set oidc.issuer when OIDC is enabled" .Values.oidc.issuer }}
+    auth_oauth2.additional_scopes_key = {{ required "Set oidc.additionalScopesKey when OIDC is enabled" .Values.oidc.additionalScopesKey }}
+    management.oauth_enabled = true
+    management.oauth_client_id = {{ required "Set oidc.clientId when OIDC is enabled" .Values.oidc.clientId }}
+    management.oauth_scopes = {{ required "Set oidc.scopes when OIDC is enabled" .Values.oidc.scopes }}
+    management.oauth_disable_basic_auth = false
+{{- end }}
+
+  enabled_plugins: |
+    [rabbitmq_management,rabbitmq_peer_discovery_k8s{{- if .Values.oidc.enabled }},rabbitmq_auth_backend_oauth2{{- end }}].
+
+  inter_node_tls.config: |
+    [
+      {server, [
+        {cacertfile, "/etc/rabbitmq/tls/ca.crt"},
+        {certfile, "/etc/rabbitmq/tls/tls.crt"},
+        {keyfile, "/etc/rabbitmq/tls/tls.key"},
+        {verify, verify_peer},
+        {fail_if_no_peer_cert, true}
+      ]},
+      {client, [
+        {cacertfile, "/etc/rabbitmq/tls/ca.crt"},
+        {certfile, "/etc/rabbitmq/tls/tls.crt"},
+        {keyfile, "/etc/rabbitmq/tls/tls.key"},
+        {verify, verify_peer}
+      ]}
+    ].

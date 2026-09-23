@@ -1,0 +1,195 @@
+{{- $name := include "truehear-rabbitmq.fullname" . -}}
+{{- $replicas := required "Set replicaCount in the environment values file" .Values.replicaCount -}}
+{{- $storageClass := required "Set persistence.storageClassName in the environment values file" .Values.persistence.storageClassName -}}
+{{- $vhost := required "Set vhost in the environment values file" .Values.vhost -}}
+{{- if lt (int $replicas) 3 -}}
+{{- fail "RabbitMQ requires at least three members for the reviewed quorum topology" -}}
+{{- end -}}
+{{- if eq (mod (int $replicas) 2) 0 -}}
+{{- fail "Use an odd RabbitMQ member count for the reviewed quorum topology" -}}
+{{- end -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "truehear-rabbitmq.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: truehear-platform
+spec:
+  serviceName: {{ $name }}-headless
+  replicas: {{ $replicas }}
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: OnDelete
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      {{- include "truehear-rabbitmq.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "truehear-rabbitmq.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: messaging
+        app.kubernetes.io/part-of: truehear-platform
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: rabbitmq
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 120
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- include "truehear-rabbitmq.selectorLabels" . | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # fsGroup can add group-read permissions when an existing PVC is
+        # remounted. Erlang refuses to start unless its cookie is owner-only.
+        - name: protect-erlang-cookie
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              cookie=/var/lib/rabbitmq/.erlang.cookie
+              if [ -e "$cookie" ]; then
+                test -f "$cookie" && test ! -L "$cookie"
+                chmod 0400 "$cookie"
+                test "$(stat -c %a "$cookie")" = 400
+              fi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+        - name: prepare-config
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              cp /config-source/rabbitmq.conf /etc/rabbitmq/rabbitmq.conf
+              cp /config-source/enabled_plugins /etc/rabbitmq/enabled_plugins
+              cp /config-source/inter_node_tls.config /etc/rabbitmq/inter_node_tls.config
+              ssl_path="$(erl -noinput -eval 'io:format("~s", [code:lib_dir(ssl, ebin)]), halt().')"
+              test -n "$ssl_path"
+              printf 'SERVER_ADDITIONAL_ERL_ARGS="-pa %s -proto_dist inet_tls -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"\n' "$ssl_path" > /etc/rabbitmq/rabbitmq-env.conf
+              printf 'RABBITMQ_CTL_ERL_ARGS="-pa %s -proto_dist inet_tls -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"\n' "$ssl_path" >> /etc/rabbitmq/rabbitmq-env.conf
+              chown -R 999:999 /etc/rabbitmq
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN"]
+          volumeMounts:
+            - name: config-source
+              mountPath: /config-source
+              readOnly: true
+            - name: config
+              mountPath: /etc/rabbitmq
+      containers:
+        - name: rabbitmq
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: RABBITMQ_NODENAME
+              value: rabbit@$(POD_NAME).{{ $name }}-headless.{{ .Release.Namespace }}.svc.cluster.local
+            - name: RABBITMQ_USE_LONGNAME
+              value: "true"
+            - name: RABBITMQ_DEFAULT_VHOST
+              value: {{ $vhost | quote }}
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "Set bootstrapAuth.secretName" .Values.bootstrapAuth.secretName }}
+                  key: {{ required "Set bootstrapAuth.usernameKey" .Values.bootstrapAuth.usernameKey }}
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bootstrapAuth.secretName }}
+                  key: {{ required "Set bootstrapAuth.passwordKey" .Values.bootstrapAuth.passwordKey }}
+            - name: RABBITMQ_ERLANG_COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "Set cookie.secretName" .Values.cookie.secretName }}
+                  key: {{ required "Set cookie.secretKey" .Values.cookie.secretKey }}
+          ports:
+            - name: amqps
+              containerPort: {{ .Values.service.amqpsPort }}
+            - name: management-tls
+              containerPort: {{ .Values.service.managementTlsPort }}
+            - name: epmd
+              containerPort: {{ .Values.service.epmdPort }}
+            - name: distribution
+              containerPort: {{ .Values.service.distributionPort }}
+          startupProbe:
+            tcpSocket:
+              port: amqps
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket:
+              port: amqps
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: amqps
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+            - name: config
+              mountPath: /etc/rabbitmq
+            - name: tls
+              mountPath: /etc/rabbitmq/tls
+              readOnly: true
+      volumes:
+        - name: config-source
+          configMap:
+            name: {{ $name }}-config
+        - name: config
+          emptyDir: {}
+        - name: tls
+          secret:
+            secretName: {{ required "Set tls.secretName" .Values.tls.secretName }}
+            defaultMode: 0440
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: {{ $storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}

@@ -8,6 +8,14 @@ metadata:
   namespace: default
 spec: {}
 ---
+# Staging: same shape, its own VPC (CAPA creates one per managed cluster).
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSManagedCluster
+metadata:
+  name: eu-north-1-staging
+  namespace: default
+spec: {}
+---
 # Infrastructure resource for the EKS management cluster. The Cluster in
 # mgmt/aws/clusters/eu-north-1/management/ references this literal name.
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta2

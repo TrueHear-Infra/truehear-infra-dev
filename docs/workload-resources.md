@@ -1,39 +1,17 @@
 # Workload resources
 
-What the ACK controllers on the management cluster create in AWS, one
-instance per workload cluster (issue #346 moved both the controllers and
-their CRs off the workload clusters). For how the controllers authenticate
-(and the per-cluster reader roles / console user), see
-[AWS authentication & IAM](./aws-iam.md).
+Cloud resources created for the workload clusters, and who creates them.
 
-## Bucket security posture
+## AWS: nothing (retired)
 
-`mgmt/aws/infrastructure/workload-resources/bucket.yaml` creates one bucket
-per cluster (`krops-<account>-<cluster>-data`, literal values: there is no
-`cluster-vars` ConfigMap on the management cluster) with:
-
-- all public access blocked
-- server-side encryption enforced (SSE-S3/AES256, bucket keys)
-- versioning enabled
-- ACLs disabled (`BucketOwnerEnforced`)
-- a bucket policy denying non-TLS requests
-
-## RDS instances
-
-`mgmt/aws/infrastructure/workload-resources/dbinstance.yaml` creates one
-PostgreSQL 17 instance per cluster (`krops-<cluster>-db`) in that cluster's
-own region; the controller's default region is eu-north-1 and the eu-west-1
-instance overrides it with the `services.k8s.aws/region` annotation:
-
-- `db.t4g.micro`, 20 GiB gp3, single-AZ (smallest footprint)
-- not publicly accessible, storage encrypted
-- master password managed by RDS (`manageMasterUserPassword: true`) and stored
-  in Secrets Manager: no password is ever declared in Git
-
-> **Known limitation**: the `DBInstance` sets no `dbSubnetGroupName`, so the
-> instance lands in the region's **default VPC**, not the EKS VPC. CAPA
-> creates the EKS VPC dynamically, so its subnet IDs cannot be declared in
-> Git ahead of time.
+The TrueHear AWS account declares no S3 buckets or RDS instances. The krops
+upstream `workload-resources/` example CRs (`bucket.yaml`, `dbinstance.yaml`,
+and the per-cluster reader `Role` CRs) were removed together with the ACK S3
+and RDS controllers; the management cluster now runs only the ACK IAM and EKS
+controllers, which create the per-environment Pod Identity roles, policies,
+and associations. For what they create and how the controllers authenticate,
+see [AWS authentication & IAM](./aws-iam.md). The teardown sweep likewise has
+no S3/RDS step (see [Operations](./operations.md#teardown)).
 
 ## GCP resources (GKE workload cluster)
 

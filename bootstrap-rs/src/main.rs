@@ -553,11 +553,17 @@ async fn flux_namespace_vars(flux_ns: &str) -> Result<std::collections::HashMap<
     Ok(vars)
 }
 
-/// Whether the GitHub/age preflight (PAT, repo branch probe, sops age
-/// key) must run: gated on the sync source (issue #105 scope item 6),
-/// not the profile name. AWS-only credential steps stay profile-gated.
+/// Whether the GitHub preflight (PAT, repo branch probe) must run: gated on
+/// the sync source (issue #105 scope item 6), not the profile name.
+/// AWS-only credential steps stay profile-gated.
 fn runs_github_preflight(cfg: &Config) -> bool {
     cfg.environment.sync == SyncSource::Github
+}
+
+/// The age key is needed by every environment: workload clusters decrypt
+/// workload/**/*.sops.yaml whatever the management sync source is.
+fn runs_age_preflight(_env: &Environment) -> bool {
+    true
 }
 
 // ── Process helpers ───────────────────────────────────────────────────────────
@@ -700,6 +706,10 @@ struct GithubContext {
     git_repo_url: String,
     github_user: String,
     github_token: String,
+}
+
+/// The age key and its public form, resolved for every environment.
+struct AgeContext {
     age_key_content: String,
     age_pubkey: String,
 }
@@ -708,6 +718,7 @@ struct Preflight {
     engine: String,
     engine_sock: String,
     github: Option<GithubContext>,
+    age: AgeContext,
 }
 
 async fn preflight_checks(cfg: &Config, http: &reqwest::Client) -> Result<Preflight> {
@@ -725,6 +736,7 @@ async fn preflight_checks(cfg: &Config, http: &reqwest::Client) -> Result<Prefli
     } else {
         None
     };
+    let age = preflight_age(cfg).await?;
 
     let resolved = engine::resolve(
         cfg.container_engine.clone(),
@@ -737,6 +749,7 @@ async fn preflight_checks(cfg: &Config, http: &reqwest::Client) -> Result<Prefli
         engine: resolved.engine,
         engine_sock: resolved.engine_sock,
         github,
+        age,
     })
 }
 
@@ -773,12 +786,35 @@ async fn preflight_github(cfg: &Config, http: &reqwest::Client) -> Result<Github
         );
     }
 
+    Ok(GithubContext {
+        git_repo_url,
+        github_user,
+        github_token,
+    })
+}
+
+async fn preflight_age(cfg: &Config) -> Result<AgeContext> {
+    if !runs_age_preflight(&cfg.environment) {
+        bail!("age preflight is required for every environment");
+    }
     let age_key_file = cfg.age_key_file.clone();
     if !age_key_file.is_file() {
-        bail!(
-            "age key file not found at '{}'.\n       Generate one with:  mise run sops-keygen\n       and add its PUBLIC key to .sops.yaml. See docs/secrets.md.",
+        // No key for this profile yet: generate one with the repo task (it
+        // refuses to overwrite, so a race cannot clobber an existing key).
+        // The operator must still add the printed public key to .sops.yaml
+        // for Flux to decrypt anything committed; the bootstrap itself only
+        // needs the key to exist so sops-age can be planted.
+        println!(
+            ">>> No age key at '{}'; generating one (mise run sops-keygen)...",
             age_key_file.display()
         );
+        run("mise", &["run", "sops-keygen"]).await?;
+        if !age_key_file.is_file() {
+            bail!(
+                "mise run sops-keygen did not create '{}'",
+                age_key_file.display()
+            );
+        }
     }
 
     // Validate age key file format first (before attempting to extract the
@@ -809,10 +845,7 @@ async fn preflight_github(cfg: &Config, http: &reqwest::Client) -> Result<Github
         )
     })?;
 
-    Ok(GithubContext {
-        git_repo_url,
-        github_user,
-        github_token,
+    Ok(AgeContext {
         age_key_content,
         age_pubkey,
     })
@@ -1157,16 +1190,53 @@ async fn install_flux_operator(
     run("helm", &arg_refs).await
 }
 
-async fn create_github_secrets(
+/// The `sops-age` Secret Flux's kustomize-controller reads
+/// (`keys.<pubkey>.agekey` entries).
+fn sops_age_secret_manifest(
+    name: &str,
+    namespace: &str,
+    pubkey: &str,
+    key: &str,
+) -> serde_json::Value {
+    json!({
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": { "name": name, "namespace": namespace },
+        "type": "Opaque",
+        "stringData": { format!("keys.{pubkey}.agekey"): key },
+    })
+}
+
+/// A ClusterResourceSet payload Secret wrapping the flux-system sops-age
+/// Secret, so mgmt/<env>/addons/flux-apps can hand the decryption key to
+/// each workload cluster (same shape as flux-pull-secret.sops.yaml).
+fn sops_age_resource_set_manifest(
+    name: &str,
+    namespace: &str,
+    inner_name: &str,
+    inner_namespace: &str,
+    pubkey: &str,
+    key: &str,
+) -> serde_json::Value {
+    let inner = sops_age_secret_manifest(inner_name, inner_namespace, pubkey, key);
+    json!({
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": { "name": name, "namespace": namespace },
+        "type": "addons.cluster.x-k8s.io/resource-set",
+        "stringData": { "sops-age.yaml": serde_json::to_string(&inner).expect("serializable") },
+    })
+}
+
+async fn create_github_pat_secret(
     repo: &BootstrapConfig,
     github: &GithubContext,
     kubeconfig: Option<&str>,
 ) -> Result<()> {
-    // Both secrets are applied as manifests on stdin: idempotent on rerun,
-    // and no secret material ever appears on argv or in error messages.
+    // Applied as a manifest on stdin: idempotent on rerun, and no secret
+    // material ever appears on argv or in error messages.
     let flux_ns = &repo.bootstrap.flux_namespace;
     let pat_secret = &repo.bootstrap.github_pat_secret;
-    let sops_secret = &repo.bootstrap.sops_age_secret;
 
     // Basic-auth secret consumed by Flux's source-controller to clone the repo.
     println!(">>> Creating GitHub PAT credentials secret in {flux_ns}...");
@@ -1183,14 +1253,24 @@ async fn create_github_secrets(
             },
         }),
     )
-    .await?;
+    .await
+}
 
-    // Flux's kustomize-controller uses this key to decrypt *.sops.yaml
-    // manifests during reconciliation. Flux scans the Secret for keys matching
-    // `keys.<public-key>.agekey`.
+/// Plants the age decryption key on the management cluster, twice:
+/// `flux-system/sops-age` for the management Flux, and
+/// `default/sops-age-resource-set` (a ClusterResourceSet payload) so the
+/// flux-apps ClusterResourceSet can hand the same key to every workload
+/// cluster for decrypting `workload/**/*.sops.yaml`.
+async fn create_sops_age_secrets(
+    repo: &BootstrapConfig,
+    age: &AgeContext,
+    kubeconfig: Option<&str>,
+) -> Result<()> {
+    let flux_ns = &repo.bootstrap.flux_namespace;
+    let sops_secret = &repo.bootstrap.sops_age_secret;
     println!(">>> Creating sops-age decryption secret in {flux_ns}...");
-    // Remove any existing sops-age secret to avoid stale keys from previous
-    // bootstrap runs (apply alone would merge old key entries).
+    // Delete first: apply merges stringData keys and would keep a stale
+    // entry from a previous bootstrap with a different age key.
     run(
         "kubectl",
         &kubectl_cmd(
@@ -1208,15 +1288,23 @@ async fn create_github_secrets(
     .await?;
     kubectl_apply(
         kubeconfig,
-        &json!({
-            "apiVersion": "v1",
-            "kind": "Secret",
-            "metadata": { "name": sops_secret, "namespace": flux_ns },
-            "type": "Opaque",
-            "stringData": {
-                format!("keys.{}.agekey", github.age_pubkey): github.age_key_content,
-            },
-        }),
+        &sops_age_secret_manifest(sops_secret, flux_ns, &age.age_pubkey, &age.age_key_content),
+    )
+    .await?;
+
+    let crs_name = &repo.bootstrap.sops_age_resource_set;
+    let mgmt_ns = &repo.bootstrap.mgmt_namespace;
+    println!(">>> Creating {crs_name} (ClusterResourceSet payload for workload clusters) in {mgmt_ns}...");
+    kubectl_apply(
+        kubeconfig,
+        &sops_age_resource_set_manifest(
+            crs_name,
+            mgmt_ns,
+            sops_secret,
+            flux_ns,
+            &age.age_pubkey,
+            &age.age_key_content,
+        ),
     )
     .await
 }
@@ -2360,8 +2448,9 @@ async fn pivot_seed_target(
     // sequence the bootstrap ran against kind.
     install_flux_operator(&cfg.repo, registry_config, Some(kc)).await?;
     if let Some(github) = preflight.github.as_ref() {
-        create_github_secrets(&cfg.repo, github, Some(kc)).await?;
+        create_github_pat_secret(&cfg.repo, github, Some(kc)).await?;
     }
+    create_sops_age_secrets(&cfg.repo, &preflight.age, Some(kc)).await?;
     install_flux_instance(cfg, preflight.github.as_ref(), registry_config, Some(kc)).await?;
 
     println!(">>> Kustomizations on the management cluster:");
@@ -2631,10 +2720,12 @@ async fn run_bootstrap(cfg: &Config, http: &reqwest::Client) -> Result<()> {
     // Step 2: install the Flux Operator.
     install_flux_operator(&cfg.repo, registry_config.path(), None).await?;
 
-    // Step 3: GitHub PAT + SOPS age secrets (github-sync environments).
+    // Step 3: GitHub PAT (github-sync environments) + SOPS age secrets
+    // (every environment: the key is what workload Flux needs to decrypt).
     if let Some(github) = preflight.github.as_ref() {
-        create_github_secrets(&cfg.repo, github, None).await?;
+        create_github_pat_secret(&cfg.repo, github, None).await?;
     }
+    create_sops_age_secrets(&cfg.repo, &preflight.age, None).await?;
 
     // Step 4: install the FluxInstance via Helm.
     let controllers_ready =
@@ -3423,13 +3514,56 @@ mod tests {
     #[test]
     fn sops_age_secret_key_name_embeds_pubkey() {
         let pubkey = extract_age_pubkey(VALID_AGE_KEY).unwrap();
-        let manifest = json!({
-            "stringData": { format!("keys.{pubkey}.agekey"): VALID_AGE_KEY },
-        });
+        let manifest = sops_age_secret_manifest("sops-age", "flux-system", &pubkey, VALID_AGE_KEY);
         assert!(manifest["stringData"]
             .as_object()
             .unwrap()
             .contains_key(&format!("keys.{pubkey}.agekey")));
+    }
+
+    fn serde_yaml_like_parse(text: &str) -> serde_json::Value {
+        // The inner manifest is emitted as JSON (valid YAML).
+        serde_json::from_str(text).unwrap()
+    }
+
+    /// A Config for the named profile, no env overrides: enough to drive
+    /// the sync-independent preflight predicates.
+    fn test_config(profile: &str) -> Config {
+        let cli = Cli::try_parse_from(["krops-bootstrap", profile]).unwrap();
+        Config::from_env(&cli, repo_config(), |_| None).unwrap()
+    }
+
+    #[test]
+    fn sops_age_resource_set_wraps_flux_system_secret() {
+        let manifest = sops_age_resource_set_manifest(
+            "sops-age-resource-set",
+            "default",
+            "sops-age",
+            "flux-system",
+            "age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+            VALID_AGE_KEY,
+        );
+        assert_eq!(manifest["kind"], "Secret");
+        assert_eq!(manifest["type"], "addons.cluster.x-k8s.io/resource-set");
+        assert_eq!(manifest["metadata"]["name"], "sops-age-resource-set");
+        assert_eq!(manifest["metadata"]["namespace"], "default");
+        let inner = manifest["stringData"]["sops-age.yaml"].as_str().unwrap();
+        let inner: serde_json::Value = serde_yaml_like_parse(inner);
+        assert_eq!(inner["kind"], "Secret");
+        assert_eq!(inner["metadata"]["name"], "sops-age");
+        assert_eq!(inner["metadata"]["namespace"], "flux-system");
+        assert!(inner["stringData"].as_object().unwrap().contains_key(
+            "keys.age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq.agekey"
+        ));
+    }
+
+    #[test]
+    fn age_preflight_runs_for_every_sync_source() {
+        // The workload clusters decrypt workload/**/*.sops.yaml regardless
+        // of how the management cluster syncs, so the age key is no longer
+        // gated on sync = github.
+        assert!(runs_age_preflight(&test_config("local-host").environment));
+        assert!(runs_age_preflight(&test_config("aws").environment));
     }
 
     // ── Clean-first-run waits (#348/#349) ────────────────────────────────────

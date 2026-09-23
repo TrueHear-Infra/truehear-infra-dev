@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: keycloak-bootstrap-admin
+    namespace: keycloak
+    labels:
+        app.kubernetes.io/name: keycloak
+        app.kubernetes.io/component: identity-provider
+        app.kubernetes.io/part-of: truehear-platform
+        truehear.io/environment: staging
+type: Opaque
+stringData:
+    username: ENC[AES256_GCM,data:SOmU2kU=,iv:/7JsVFtdUWT+A7e3qOoZ2HBuuedczfiW6Gi8mQXjmeM=,tag:XTHctdPmPifp0dfvUWxHTQ==,type:str]
+    password: ENC[AES256_GCM,data:365JjdOGQ/p/g+04bsjyxXHb0MXk2og0h9+a6aLhCIQ=,iv:Vt1vb3utotDl4jc1WjUVbM2L+UUnE0zrMOpRpLKG0yg=,tag:zTeRO4FLwNmFM2yLmaAaDw==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBsRWw4TCtBM09TdTNTUXAv
+            dVZ6cmJRT2creUlWTEplcTVhWVJkci9oa3o0CjR4SHRsTEE3NFVWRnBtR21ueFVN
+            SmMyZzlHQ3JaNXdyWE1YVGhLeDgvWncKLS0tIFJnRzhjaE9NTFhmdDdlbnh0MEkv
+            bDdSNHVGZ3MxV1M5Wm1nOSt4cXdkLzQK8+oyFqTKgFrsooVWLzvJrqb/3Qo0AUz0
+            ysgw6ndIGNHqxdttDJGx15xUHr2DmH/qeCprjqaBagvZtvBE3P10nA==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1qdn86vl3v58juv4j7gwuz3qu9hjl4fhcpvla39m848cgz3xd44asxa30nv
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-09-22T15:34:32Z"
+    mac: ENC[AES256_GCM,data:OGtTqOYjymCOUXXsjQ8/RPGfbmdnsN8hw/Z+DzfmgJsLfRpO4E0RP7LoUsZQ2RftG9fA6RXwmuukQx/5gWhZeI9rEWlb534VHZ3qxg3dmgG9wsaIToYuLhddHGbWwzJCmTqOpfbPjzbW13h+hT4qpvcy/tBP1SpMgbaH+AjIkEo=,iv:Lmz9/bPCLGl3jlTntEMm5uzNB8qCPrZjxHqj2xRDigQ=,tag:Q9/LM5KDekePHKU6KsWHQw==,type:str]
+    version: 3.13.3

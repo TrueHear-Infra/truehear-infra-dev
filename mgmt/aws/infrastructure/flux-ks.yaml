@@ -79,7 +79,7 @@ spec:
   retryInterval: 2m
   timeout: 10m
   prune: true
-  # wait: true so dev-pod-identity and aws-global-iam only apply once the
+  # wait: true so the *-pod-identity roots and aws-global-iam only apply once the
   # ACK IAM/EKS HelmReleases (and their CRDs) are fully Ready.
   wait: true
   sourceRef:
@@ -109,6 +109,26 @@ spec:
     kind: GitRepository
     name: flux-system
   path: ./mgmt/aws/infrastructure/dev-pod-identity
+  dependsOn:
+    - name: ack-controllers
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: staging-pod-identity
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 2m
+  timeout: 5m
+  prune: true
+  # wait: false for the same reason as dev-pod-identity: the associations
+  # stay not-Ready until the staging EKS control plane exists.
+  wait: false
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./mgmt/aws/infrastructure/staging-pod-identity
   dependsOn:
     - name: ack-controllers
 ---

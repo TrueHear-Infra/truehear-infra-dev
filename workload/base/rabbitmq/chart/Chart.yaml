@@ -1,0 +1,6 @@
+apiVersion: v2
+name: truehear-rabbitmq
+description: Private TLS-enabled RabbitMQ cluster for TrueHear
+type: application
+version: 0.1.0
+appVersion: 4.2.9

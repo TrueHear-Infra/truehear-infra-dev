@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-postgresql-internal
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak-postgresql
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: truehear-platform
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: keycloak-postgresql
+    app.kubernetes.io/component: database
+  ports:
+    - name: postgresql
+      port: 5432
+      protocol: TCP
+      targetPort: postgresql

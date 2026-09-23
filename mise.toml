@@ -2,7 +2,7 @@ min_version = "2026.9.12"
 
 [tools]
 go = "1.27.1"
-kubectl = "1.37.0"
+kubectl = "1.36.4"
 python = "3.14.7"
 kind = "0.33.0"
 helm = "4.3.0"
@@ -56,6 +56,16 @@ fi
 echo "==> sops-keygen prints the public key"
 if ! python3 tests/test-sops-keygen-prints-public-key.py; then
   echo "    FAILED: sops-keygen public key" >&2
+  fail=1
+fi
+echo "==> truehear env secret generator"
+if ! python3 tests/test-truehear-env-secrets.py; then
+  echo "    FAILED: truehear env secret generator" >&2
+  fail=1
+fi
+echo "==> workload overlay cross-check"
+if ! python3 tests/test-workload-overlays.py; then
+  echo "    FAILED: workload overlay cross-check" >&2
   fail=1
 fi
 echo "==> local-host kubeconfig endpoint is host-only (toolbox keeps the kind-network endpoint)"
@@ -190,10 +200,14 @@ run = "sops --encrypt --in-place --input-type yaml --output-type yaml"
 description = "Decrypt a *.sops.yaml manifest to stdout (usage: mise run sops-decrypt <file>)"
 run = "sops --decrypt --input-type yaml --output-type yaml"
 
+[tasks.truehear-env-secrets]
+description = "Generate the SOPS-encrypted Secrets an environment overlay needs (usage: mise run truehear-env-secrets -- --env <env>)"
+run = "scripts/truehear-env-secrets.sh"
+
 [tasks.sops-updatekeys]
 description = "Re-encrypt all *.sops.yaml files to match recipients in .sops.yaml"
 run = """
-for f in $(find mgmt -name '*.sops.yaml'); do
+for f in $(find mgmt workload -name '*.sops.yaml'); do
   echo "==> updatekeys $f"
   sops updatekeys --yes "$f"
 done
