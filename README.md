@@ -25,8 +25,7 @@ local Docker clusters. A disposable
 [kind](https://kind.sigs.k8s.io/) cluster bootstraps Flux,
 CAPI pivots control to a self-managed management cluster, and the Rust
 [`krops-bootstrap`](docs/bootstrap-cli.md) CLI handles bootstrap, pivot, and
-teardown. After that, everything is declared in Git, with a
-[Zarf](https://zarf.dev/) bundle for air-gapped local installs. It is a working
+teardown. After that, everything is declared in Git. It is a working
 reference implementation, not a product, so fork it, strip it down, and adapt
 it to your own cloud and clusters.
 
@@ -243,17 +242,6 @@ Teardown deletes the CAPD workload cluster first, then the pre-pivot kind
 cluster or the post-pivot self-managed management containers, and removes the
 local registry last.
 
-#### Air-gapped local host
-
-The `local-host` profile packaged with [Zarf](https://zarf.dev) for
-completely disconnected deployments: a connected build machine renders the
-GitOps tree, pulls the images and charts, signs the package, and a
-disconnected deploy host runs it with zero external traffic. Validated with
-the radio off. See [Air-gapped krops](docs/airgap.md) for build, offline
-deploy, and the update drill.
-
-![krops air-gap architecture](docs/air-gap-infra.svg)
-
 ## The bootstrap CLI
 
 The single `krops-bootstrap` binary implements bootstrap, the default pivot, and
@@ -285,7 +273,6 @@ teardown controls, toolbox release, and current parity status.
 | [docs/secrets.md](docs/secrets.md) | SOPS + age secret management, key setup, credential rotation |
 | [docs/operations.md](docs/operations.md) | Toolbox runtime, prerequisites, quotas, bootstrap, pivot recovery, teardown, validation |
 | [docs/extending.md](docs/extending.md) | Adding a workload cluster, adding apps to the workload clusters, adding other providers |
-| [docs/airgap.md](docs/airgap.md) | Zarf air-gap bundle: package build, offline deploy, verification checklist, update drill |
 | [docs/proposals/](docs/proposals/README.md) | Design proposals under review (not yet decided or implemented) |
 
 ## Repository layout
@@ -293,7 +280,6 @@ teardown controls, toolbox release, and current parity status.
 ```
 ├── .github/workflows/             Validation, Rust/toolbox CI, docs CI and
 │                                  Pages deploy, signed releases
-├── airgap/                        Zarf air-gap bundle, image inventory, scripts
 ├── virtualized-e2e/               WireMock-virtualized e2e harness (#355):
 │                                  lib/ shared components + one arm per
 │                                  cloud (aws/ is the reference); not

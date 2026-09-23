@@ -50,8 +50,8 @@ def test_doc_sibling_links_untouched():
 
 
 def test_doc_diagram_images_become_raw_links():
-    assert rewrite_doc_links("![d](air-gap-infra.svg)") == (
-        f"[![d](air-gap-infra.svg)]({raw('air-gap-infra')})"
+    assert rewrite_doc_links("![d](aws-infra.svg)") == (
+        f"[![d](aws-infra.svg)]({raw('aws-infra')})"
     )
 
 

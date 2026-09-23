@@ -1,4 +1,4 @@
-/* Palette sampled from polarsquad/krops docs/{aws,local-host,air-gap}-infra.svg and krops-logo.svg. */
+/* Palette sampled from polarsquad/krops docs/{aws,local-host}-infra.svg and krops-logo.svg. */
 :root {
   --krops-bg: #0c120f;
   --krops-panel: #131e18;

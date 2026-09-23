@@ -20,7 +20,6 @@ Work is organized into numbered milestones that build on each other.
 | 1-renovate-foundations | closed | Renovate as the hosted GitHub App, the central version catalog retired, a shared integration-test harness (`tests/renovate_harness.py`) |
 | 2-rust-bootstrap | closed | `krops-bootstrap`, the Rust CLI covering bootstrap, pivot, and teardown; `bootstrap.toml` as the repository-owned configuration; the toolbox container image |
 | 3-environments | closed | the `aws` and `local-host` environments are on `main` |
-| 4-hardening | open | Air-gap supply chain (#80): digest pins everywhere, signed SBOMs, offline verification, transactional updates. The build, signing, and publication model needs a design decision first (#138) |
 
 Two facts follow from that table and shape what a contributor can rely on:
 
@@ -38,8 +37,7 @@ the best places to start if you are new to the repository.
 |---|---|---|
 | Documentation structure | #151, #149, #150, #152 | README, AGENTS.md, and `docs/` overlap and drift; external links are unchecked; `bootstrap.toml` should be the single configuration reference; "environment" is used for two different things |
 | Developer experience | #139, #134, #135, #153, #159 | A stale host toolchain broke a PR once; validation tools should come from mise in CI too; merged branches are not auto-deleted; the commit policy for PRs is under evaluation |
-| Python quality | #160, #161, #162, #164 | The test scripts under `tests/` and `airgap/tests/` have no linter or test runner; Renovate parser resilience and the Dependency Dashboard are unverified |
-| Air-gap coverage gaps | #165, #170, #173, #142, #136, #137 | The digest gate misses new source types; Renovate cannot pin digests in `airgap/scripts/*.sh`; Cluster topology versions are not covered |
+| Python quality | #160, #161, #162, #164 | The test scripts under `tests/` have no linter or test runner; Renovate parser resilience and the Dependency Dashboard are unverified |
 
 Labels mark the entry points:
 
@@ -98,7 +96,7 @@ Requirements:
   pin is `bootstrap-rs/rust-toolchain.toml`.
 - Node 24 or newer only for the Renovate tests and dry-run
   (`mise x node@24 -- ...`).
-- Python 3 for the test scripts under `tests/` and `airgap/tests/`.
+- Python 3 for the test scripts under `tests/`.
 
 Environment layers: `mise.aws.toml` and
 `mise.local-host.toml` add per-environment
@@ -134,9 +132,6 @@ Additional conventions:
   Renovate. Do not reintroduce a central version list. If you add a new
   pinned dependency, add Renovate coverage for it in the same PR and prove it
   with the dry-run described in `AGENTS.md` ("Editing renovate.json5").
-- External images in air-gap sources must be pinned as
-  `repository:tag@sha256:<digest>`. The digest gate runs in `mise run
-  validate` and in CI.
 - When a change affects repository structure, workflows, or how to navigate
   the repository, update `AGENTS.md` and the relevant `docs/` page in the
   same PR.
@@ -175,14 +170,13 @@ Run the checks that match what you touched. CI runs all of them.
 
 | You changed | Run |
 |---|---|
-| Anything | `mise run validate` (shell syntax, air-gap digest gate, `bootstrap.toml` cross-check, every kustomize overlay) |
+| Anything | `mise run validate` (shell syntax, `bootstrap.toml` cross-check, every kustomize overlay) |
 | `README.md` or `docs/` | `mise run docs-build` (assembles `build/docs/` and runs the strict MkDocs build that CI gates on) |
 | `tools/assemble_docs.py` | `mise run docs-test`, then `mise run docs-build` |
 | `mgmt/` or `workload/` YAML | `yamllint` with the CI settings (line length and document start disabled, `*.sops.yaml` ignored) |
 | `bootstrap-rs/` | `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo build --locked`, `cargo test --locked` |
-| `renovate.json5` or a pinned version | The pinned dry-run from `AGENTS.md`, then `mise x node@24 -- python3 tests/test-renovate-coverage.py` and `python3 airgap/tests/test-renovate-digest-pinning.py` |
+| `renovate.json5` or a pinned version | The pinned dry-run from `AGENTS.md`, then `mise x node@24 -- python3 tests/test-renovate-coverage.py` |
 | `bootstrap.toml` or anything it references | `python3 tests/test-bootstrap-config.py` |
-| `airgap/` | `python3 airgap/tests/test-airgap-image-digests.py --all` for a full audit |
 | Lifecycle scripts or the CLI | A full `local-host` bootstrap and teardown through the toolbox |
 
 ### Open the pull request
@@ -191,7 +185,7 @@ Run the checks that match what you touched. CI runs all of them.
   verification you ran, including command output where it proves a claim.
 - Link the issue. Use `Closes #N` only when the PR completes the whole issue.
 - Expect three automated checks:
-  - `validate`: air-gap digest pins, kustomize builds, Renovate coverage,
+  - `validate`: kustomize builds, Renovate coverage,
     `bootstrap.toml` cross-check, YAML lint.
   - `bootstrap-rs`: fmt, clippy, build, test for the Rust CLI.
   - `konflate`: the PR rendered as a Flux diff (blast radius, image changes,
@@ -213,9 +207,6 @@ Run the checks that match what you touched. CI runs all of them.
   in two regions and removes the `clusterawsadm` CloudFormation stack. Run it
   only in an account you control, with the quotas in `docs/operations.md`
   established, and confirm the sweep completed.
-- The nightly `air-gapped` workflow runs on `main` only. Air-gap changes are
-  verified locally with `airgap/scripts/offline-run.sh`; see
-  `docs/airgap.md` for the checklist.
 
 ## Reporting problems
 

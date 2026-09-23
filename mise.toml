@@ -12,37 +12,20 @@ sops = "3.13.3"
 age = "1.3.2"
 uv = "0.12.17"
 
-# Zarf CLI (airgap prototype). See docs/dependencies.md's "Intentional
-# differences" for why version/asset_pattern are written this way.
-[tools."github:zarf-dev/zarf"]
-version = "0.86.0"
-asset_pattern = 'zarf_v{{ version }}_{{ os(linux="Linux", macos="Darwin") }}_{{ arch(x64="amd64") }}'
-bin = "zarf"
-
 [settings]
 env_file = ".env"
 
 [tasks.validate]
-description = "Check scripts and air-gap image pins, cross-check bootstrap config, and build every kustomize overlay"
+description = "Check scripts, cross-check bootstrap config, and build every kustomize overlay"
 run = '''
 fail=0
-for script in bootstrap.sh bootstrap-common.sh pivot.sh teardown.sh scripts/toolbox-run.sh airgap/scripts/*.sh; do
+for script in bootstrap.sh bootstrap-common.sh pivot.sh teardown.sh scripts/toolbox-run.sh; do
   echo "==> bash -n $script"
   if ! bash -n "$script"; then
     echo "    FAILED: $script" >&2
     fail=1
   fi
 done
-echo "==> air-gap image digest pins"
-if ! python3 airgap/tests/test-airgap-image-digests.py; then
-  echo "    FAILED: air-gap image digest pins" >&2
-  fail=1
-fi
-echo "==> air-gap ownership invariant (zarf.yaml vs images.txt)"
-if ! python3 airgap/tests/test-airgap-ownership.py; then
-  echo "    FAILED: air-gap ownership invariant" >&2
-  fail=1
-fi
 echo "==> toolbox-run.sh exec (image and CLI args reach the container engine)"
 if ! python3 tests/test-toolbox-run-exec.py; then
   echo "    FAILED: toolbox-run.sh exec" >&2
@@ -76,51 +59,6 @@ fi
 echo "==> docs show toolbox helper runs, not host mise (#423)"
 if ! python3 tests/test-docs-toolbox-helpers.py; then
   echo "    FAILED: docs toolbox helpers" >&2
-  fail=1
-fi
-echo "==> air-gap digest token boundary"
-if ! python3 airgap/tests/test-digest-regex.py; then
-  echo "    FAILED: air-gap digest token boundary" >&2
-  fail=1
-fi
-echo "==> failure-notification job wiring"
-if ! python3 airgap/tests/test-airgap-failure-notification.py; then
-  echo "    FAILED: failure-notification job wiring" >&2
-  fail=1
-fi
-echo "==> branch-dispatch signature identity wiring"
-if ! python3 airgap/tests/test-airgap-verify-identity.py; then
-  echo "    FAILED: branch-dispatch signature identity wiring" >&2
-  fail=1
-fi
-echo "==> shared clusterctl-resolution script"
-if ! python3 airgap/tests/test-resolve-clusterctl.py; then
-  echo "    FAILED: shared clusterctl-resolution script" >&2
-  fail=1
-fi
-echo "==> cert-manager debug capture on deploy failure"
-if ! python3 airgap/tests/test-airgap-debug-capture.py; then
-  echo "    FAILED: cert-manager debug capture on deploy failure" >&2
-  fail=1
-fi
-echo "==> cert-manager digest values match the bundle"
-if ! python3 airgap/tests/test-airgap-cert-manager-digest-values.py; then
-  echo "    FAILED: cert-manager digest values match the bundle" >&2
-  fail=1
-fi
-echo "==> pin_image_digests rewrites and rejects unpinned images"
-if ! python3 airgap/tests/test-airgap-pin-image-digests.py; then
-  echo "    FAILED: pin_image_digests" >&2
-  fail=1
-fi
-echo "==> host-daemon images are saved and referenced by tag"
-if ! python3 airgap/tests/test-airgap-host-image-tags.py; then
-  echo "    FAILED: host-daemon image tags" >&2
-  fail=1
-fi
-echo "==> air-gapped workflow triggers, guards, and timeouts"
-if ! python3 airgap/tests/test-airgap-workflow-config.py; then
-  echo "    FAILED: workflow config" >&2
   fail=1
 fi
 echo "==> bootstrap.toml cross-check"

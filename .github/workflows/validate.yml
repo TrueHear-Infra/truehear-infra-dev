@@ -6,79 +6,6 @@ on:
   pull_request:
 
 jobs:
-  airgap-image-pins:
-    name: Air-gap image digest pins
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Verify committed air-gap image digests
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: python3 airgap/tests/test-airgap-image-digests.py --changed-from "$BASE_SHA"
-
-      - name: Verify airgap ownership invariant
-        run: python3 airgap/tests/test-airgap-ownership.py
-      - name: Verify digest token boundary (reject overlong)
-        run: python3 airgap/tests/test-digest-regex.py
-      - name: Verify failure-notification job wiring (#321)
-        run: python3 airgap/tests/test-airgap-failure-notification.py
-      - name: Verify images.txt k8s component pins match kubeadm (#142)
-        run: python3 airgap/tests/test-airgap-kubeadm-images.py
-      - name: Verify branch-dispatch signature identity wiring (#328)
-        run: python3 airgap/tests/test-airgap-verify-identity.py
-      - name: Verify the shared clusterctl-resolution script
-        run: python3 airgap/tests/test-resolve-clusterctl.py
-      - name: Verify cert-manager debug capture on deploy failure (#329)
-        run: python3 airgap/tests/test-airgap-debug-capture.py
-      - name: Verify cert-manager pods pin the bundled image digests
-        run: python3 airgap/tests/test-airgap-cert-manager-digest-values.py
-      - name: Verify pin_image_digests rewrites and rejects unpinned images
-        run: python3 airgap/tests/test-airgap-pin-image-digests.py
-      - name: Verify host-daemon images are saved and referenced by tag
-        run: python3 airgap/tests/test-airgap-host-image-tags.py
-      - name: Verify the air-gapped workflow triggers, guards, and timeouts
-        run: python3 airgap/tests/test-airgap-workflow-config.py
-
-  zarf-mise-pin:
-    name: Zarf mise asset pin
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Install mise
-        uses: jdx/mise-action@v4.3.0
-        with:
-          version: 2026.9.12
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Verify zarf mise pin installs a real release asset
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3 tests/test-mise-zarf-pin.py
-
-      - name: Verify cert-manager supports the pinned Kubernetes version (#322)
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: python3 tests/test-cert-manager-kubernetes-support.py --changed-from "$BASE_SHA"
-
-  airgap-image-existence:
-    name: Air-gap image existence
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-
-      - name: Verify every pinned digest is pullable
-        run: python3 airgap/tests/test-airgap-image-existence.py
-
   kustomize-build:
     name: Build kustomize overlays
     runs-on: ubuntu-latest
@@ -110,11 +37,15 @@ jobs:
         run: python3 tests/test-ack-cr-placement.py
 
   renovate-digest-pinning:
-    name: Renovate airgap digest pinning
+    name: Renovate coverage and repo gates
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
+        # Full history: the #322 step diffs against BASE_SHA, which a shallow
+        # checkout does not contain.
+        with:
+          fetch-depth: 0
 
       # The sops-keygen and local-host kubeconfig tests (#423) run mise tasks,
       # so mise and the pinned tools (age, kubectl) must be available here.
@@ -146,26 +77,18 @@ jobs:
       - name: Verify the cluster-api group's boundaries
         run: python3 tests/test-renovate-cluster-api-grouping.py
 
-      - name: Verify cert-manager's chart and images.txt image tags group together (#322)
+      - name: Verify cert-manager's chart pin grouping (#322)
         run: python3 tests/test-renovate-cert-manager-grouping.py
 
-      - name: Verify airgap digest pinning
+      - name: Verify cert-manager supports the pinned Kubernetes version (#322)
         env:
-          RENOVATE_GITHUB_COM_TOKEN: ${{ github.token }}
-        run: python3 airgap/tests/test-renovate-digest-pinning.py
-
-      - name: Verify all 4 CAPI providers are covered by the Zarf release-asset managers
-        run: python3 airgap/tests/test-capi-provider-manager-coverage.py
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 tests/test-cert-manager-kubernetes-support.py --changed-from "$BASE_SHA"
 
       - name: Verify Renovate pin coverage for catalog-replaced surfaces
         env:
           RENOVATE_GITHUB_COM_TOKEN: ${{ github.token }}
         run: python3 tests/test-renovate-coverage.py
-
-      - name: Verify Renovate updates Zarf release assets and checksums together
-        env:
-          RENOVATE_GITHUB_COM_TOKEN: ${{ github.token }}
-        run: python3 tests/test-renovate-release-assets.py
 
       - name: bootstrap.toml cross-check
         run: python3 tests/test-bootstrap-config.py

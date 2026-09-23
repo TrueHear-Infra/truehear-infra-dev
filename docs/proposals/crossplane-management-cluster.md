@@ -61,5 +61,5 @@ Every slice updates its own docs and `AGENTS.md` layout lines; the README senten
 3. What does the local-host XR compose: the Podinfo `OCIRepository` plus `HelmRelease` pair (from the original proposal) or plain `Namespace` and `ConfigMap`?
 4. Provider choice per cloud: Upbound provider families or community equivalents. Needs a check of current licensing, package sizes and release cadence before slice 5.
 5. Switching (slice 9) can delete real cloud resources if done wrongly. Should slice 9 be a hard prerequisite for merging slice 5, so a Crossplane plane cannot be enabled without the safe-switch story?
-6. Air-gap: Crossplane packages come from `xpkg.crossplane.io`. Still out of scope for the Zarf bundle, as in the description, and would need its own `area:airgap` issue.
+6. Air-gap: out of scope (the bundle was removed).
 7. Live verification of AWS, GCP and Azure planes depends on sandbox accounts (#239); until then those slices are CI-render only, as with #236.

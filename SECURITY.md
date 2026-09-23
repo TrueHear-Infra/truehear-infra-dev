@@ -21,7 +21,7 @@ can be made to run untrusted code with repository permissions.
 Include:
 
 - The affected path or component (manifest, script, `bootstrap-rs/`,
-  the toolbox image, the air-gap bundle, a workflow, `renovate.json5`).
+  the toolbox image, a workflow, `renovate.json5`).
 - The commit on `main` you tested against.
 - Steps to reproduce, or the reasoning if reproduction needs cloud
   resources you cannot provision.
@@ -49,8 +49,6 @@ In scope:
 - The bootstrap, pivot, and teardown lifecycle: `bootstrap-rs/`, the
   shell scripts, `bootstrap.toml`, and `scripts/toolbox-run.sh`.
 - The toolbox container image and its signing and SBOM attestation.
-- The air-gap bundle build, signing, and offline verification under
-  `airgap/`.
 - GitHub Actions workflows under `.github/workflows/`, including token
   permissions and fork handling.
 - The Renovate configuration, where a malicious or mistaken rule could
@@ -61,7 +59,7 @@ In scope:
 Out of scope:
 
 - Vulnerabilities in upstream projects the repository consumes (Flux,
-  Cluster API and its providers, ACK controllers, konflate, Zarf,
+  Cluster API and its providers, ACK controllers, konflate,
   kind). Report those upstream; a report here is welcome only
   if krops configures the component in a way that makes the issue worse
   or bypasses a mitigation.
@@ -102,17 +100,11 @@ a gap.
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
   ```
 
-- The air-gap bundle is signed (keyless in CI, operator key locally) and
-  ships per-component Syft SBOMs. `airgap/scripts/offline-run.sh` verifies
-  the signature, checksums, and SBOMs before touching a cluster. External
-  images in the bundle are pinned by digest and a CI gate rejects unpinned
-  additions. See `docs/airgap.md`.
 - Dependency updates are proposed by the hosted Renovate GitHub App and
   reviewed as ordinary pull requests, rendered as Flux diffs before merge.
 
-Open hardening work is tracked under the `4-hardening` milestone,
-principally #80 (air-gap supply chain) and #138 (package build and signing
-model). A report that overlaps that work is still useful; say so and the
+Open hardening work is tracked under the `4-hardening` milestone.
+A report that overlaps that work is still useful; say so and the
 maintainers will link it.
 
 ## If you find a committed secret
