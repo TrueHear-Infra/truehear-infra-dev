@@ -1,11 +1,16 @@
 # AWS environment
 
-The `aws` environment is the reference: a disposable kind bootstrap cluster
-runs Flux, CAPA v2.13.0 provisions self-managed EKS clusters, the pivot moves
-the management objects into the `eu-north-1-management` cluster, and the
-management cluster runs the ACK operators (S3, RDS, IAM) reconciling the
-per-workload-cluster AWS resources from
-`mgmt/aws/infrastructure/workload-resources/` (issue #346).
+The `aws` environment is the TrueHear reference: a disposable kind bootstrap
+cluster runs Flux, CAPA v2.13.0 provisions self-managed EKS clusters, the
+pivot moves the management objects into the `eu-north-1-management` cluster,
+and the management cluster runs the ACK operators (IAM, EKS) reconciling the
+per-workload-cluster Pod Identity roles, policies, and associations from
+`mgmt/aws/infrastructure/<env>-pod-identity/`. There are no S3 buckets or RDS
+instances in the account: the krops S3/RDS controllers and the
+`Bucket`/`DBInstance`/reader-`Role` example CRs were removed (the
+`workload-resources/` directory no longer exists). See
+[TrueHear environments](./truehear-environments.md) for the environment
+levels, sizing, and the per-environment operator steps.
 
 ![krops aws architecture](aws-infra.svg)
 
@@ -13,25 +18,27 @@ per-workload-cluster AWS resources from
 
 | Region | Clusters |
 |---|---|
-| `eu-north-1` | `eu-north-1-management` (the self-managed management cluster, provisioned by the pivot) and `eu-north-1-workload` |
-| `eu-west-1` | `eu-west-1-workload` |
+| `eu-north-1` | `eu-north-1-management` (the self-managed management cluster, provisioned by the pivot), `eu-north-1-dev`, and `eu-north-1-staging` |
 
-Every cluster is an EKS control plane with an x86 plus an ARM (Graviton2)
-`AWSManagedMachinePool` at the cheapest
-offered 2 vCPU / 4 GiB shape for the region. The management cluster lives in
+Every cluster is an EKS control plane (EKS 1.34.6). The management cluster
+runs one ARM (Graviton2) `AWSManagedMachinePool` at the cheapest offered
+2 vCPU / 4 GiB shape (2 x t4g.medium, min 2 / max 3); the TrueHear workload
+clusters run one x86 pool each (3 x t3.medium, min 3 / max 4, three AZs
+`eu-north-1a/b/c`, 20 GiB gp3 root disks, on-demand, the EKS add-on set
+including `eks-pod-identity-agent`). The management cluster lives in
 `eu-north-1` and, after the pivot, reconciles its own Cluster objects.
 
 ## Prerequisites
 
 - An AWS account where you hold permission to create EKS clusters, VPCs, and
   IAM roles. The static credentials principal runs every ACK controller on
-  the management cluster, so it needs the union of the former per-controller
-  pod-identity role policies: S3 and RDS management scoped to `krops-*`
-  (plus `secretsmanager` on `rds!*` secrets and KMS grant management for the
-  managed master password), IAM role management scoped to `krops-*`
-  (`iam:CreateRole`/`PutRolePolicy`/`GetRole`/`TagRole`), and
-  `iam:CreateUser`/`PutUserPolicy`/`GetUser`/`GetUserPolicy`/`TagUser`
-  (for the `krops-reader` console user). See
+  the management cluster, so it needs the Pod Identity plumbing scope for
+  every TrueHear workload cluster: IAM role management scoped to
+  `truehear-*` names, customer-managed policy management scoped to
+  `truehear-*` names, the `krops-reader` console user actions,
+  `eks:*PodIdentityAssociation*` on `default_eu-north-1-dev-control-plane`
+  and `default_eu-north-1-staging-control-plane`, and `iam:PassRole` to
+  `pods.eks.amazonaws.com` on `truehear-*` roles. See
   [AWS authentication & IAM](./aws-iam.md) for the exact actions and the
   least-privilege trade-off.
 - A GitHub PAT and an age key as for any GitHub-synced environment (`.env`,
@@ -48,11 +55,12 @@ offered 2 vCPU / 4 GiB shape for the region. The management cluster lives in
   # == clusterawsadm bootstrap iam create-cloudformation-stack --region eu-north-1
   ```
 
-- AWS service quotas for a clean account. The default run creates two EKS
-  clusters in `eu-north-1` and one in `eu-west-1`, each with a NAT gateway per
-  AZ (one EIP each), so it needs at least 6 free EIPs in `eu-north-1` and 3 in
-  `eu-west-1`. The default regional limit is 5, so request the increase before
-  the first run (see [Operations](./operations.md#aws-service-quotas-common-first-run-blockers)).
+- AWS service quotas for a clean account. The default run creates three EKS
+  clusters in `eu-north-1` (management, `eu-north-1-dev`,
+  `eu-north-1-staging`), each with its own CAPA-created VPC and a NAT gateway
+  per AZ (one EIP each): 6 EIPs and 3 VPCs in the region. The default
+  regional EIP limit is 5, so request the increase before the first run (see
+  [Operations](./operations.md#aws-service-quotas-common-first-run-blockers)).
 
 ## Credentials
 
@@ -82,13 +90,13 @@ cluster.
 
 - **ACK controllers (management cluster).** Same static SOPS credential
   pattern (`mgmt/aws/infrastructure/ack-controllers/aws-credentials.sops.yaml`).
-  Since issue #346 the S3, RDS, and IAM controllers all run on the management
-  cluster and reconcile the per-workload-cluster `Bucket`, `DBInstance`, and
-  reader `Role` CRs declared in `mgmt/aws/infrastructure/workload-resources/`.
-  Workload clusters run no controllers and hold no credentials. The static
-  principal's policy must cover the union of the former per-controller
-  pod-identity roles; see [AWS authentication & IAM](./aws-iam.md) for the
-  full action list and the least-privilege trade-off.
+  The IAM and EKS controllers run on the management cluster and reconcile the
+  per-workload-cluster Pod Identity roles, policies, and associations declared
+  in `mgmt/aws/infrastructure/<env>-pod-identity/` (dev, staging). Workload
+  clusters run no controllers and hold no credentials. The static principal's
+  policy must cover the union of the former per-controller pod-identity roles;
+  see [AWS authentication & IAM](./aws-iam.md) for the full action list and
+  the least-privilege trade-off.
 
 ## Commit the identifiers
 
@@ -101,12 +109,12 @@ cluster.
    Ingress terminates on) in both ConfigMaps. Until then the placeholders
    `REPLACE_AFTER_FIRST_BOOTSTRAP` and `REPLACE_WITH_ACM_CERT_ARN` are
    committed.
-2. The account ID is a literal in `mgmt/aws/infrastructure/workload-resources/`
-   (the bucket names, the bucket policy ARNs, the reader-role trust
-   principal, and the RDS resource-level policy ARNs; there is no
-   `cluster-vars` ConfigMap on the management cluster). The reader role in
-   `mgmt/aws/infrastructure/aws-global-iam/reader-user.yaml` wildcards the
-   account ID instead.
+2. The account ID is a literal in the per-environment `cluster-vars`
+   ConfigMaps of `mgmt/aws/addons/flux-apps/flux-instance.yaml`
+   (`AWS_ACCOUNT_ID`); there is no `cluster-vars` ConfigMap on the
+   management cluster. The console reader user in
+   `mgmt/aws/infrastructure/aws-global-iam/reader-user.yaml` can only
+   `sts:AssumeRole` on `arn:aws:iam::*:role/truehear-*`.
 3. The EKS version is pinned in each `cluster.yaml`
    (`mgmt/aws/clusters/<region>/<env>/`); bump it deliberately, not with a
    generic dependency update.
@@ -136,21 +144,26 @@ Bootstrap ends with the pivot: the CAPI inventory moves from the disposable
 and the kind cluster is deleted (see [Pivot recovery](./operations.md#pivot-recovery)).
 
 Teardown is automated for `aws`. `scripts/toolbox-run.sh teardown aws`
-suspends Flux, deletes every workload CAPI Cluster, runs a best-effort AWS
-sweep for both workload regions and the self-managed management cluster
-(nodegroups, EKS control planes, orphaned RDS, CAPA-tagged VPC resources,
-versioned S3 buckets, CAPA and ACK IAM roles, the `krops-reader` user, and the
-`clusterawsadm` CloudFormation stack), and removes the kind bootstrap cluster.
-See [Teardown](./operations.md#teardown) for the controls.
+suspends Flux, deletes every workload CAPI Cluster (dev and staging), runs a
+best-effort AWS orphan sweep per environment-level target from
+`bootstrap.toml` (nodegroups, EKS control planes, CAPA-tagged VPC resources,
+CAPA per-cluster IAM roles, the `truehear-<env>-*` Pod Identity roles, the
+`krops-reader` user, and the `clusterawsadm` CloudFormation stack), removes
+the self-managed management cluster through the same sweep, and removes the
+kind bootstrap cluster. The sweep does not delete the customer-managed ALB
+`Policy` resources, which must be removed manually. There is no S3/RDS sweep
+(the repo declares none). See [Teardown](./operations.md#teardown) for the
+controls.
 
 ## Reconciliation order
 
 Management cluster (`mgmt/aws/`):
 
 ```
-cert-manager > capi-operator > capi-system > capa-system > clusters (eu-north-1, eu-west-1)
+cert-manager > capi-operator > capi-system > capa-system > clusters (eu-north-1)
                                      + caaph-system > flux-apps
-ack-controllers > workload-resources
+ack-controllers > dev-pod-identity
+ack-controllers > staging-pod-identity
 ack-controllers > aws-global-iam
 konflate (no dependencies)
 ```
@@ -171,8 +184,9 @@ independently of the provider (see
 
 ## Known limitations
 
-- The ACK RDS `DBInstance` sets no `dbSubnetGroupName`, so the instance lands
-  in the region's **default VPC**, not the EKS VPC (CAPA creates the EKS VPC
-  dynamically). See [Workload resources](./workload-resources.md).
+- No S3/RDS resources: the repo declares none (the krops S3/RDS controllers
+  and the `workload-resources/` example CRs were removed; the
+  `docs/workload-resources.md` page describes the retired krops upstream
+  posture).
 - No GPU node pools: they would need a GPU instance type and quota, and the
   default run is the cheapest offered ARM and x86 shapes only.

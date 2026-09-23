@@ -231,11 +231,11 @@ cosign verify-attestation \
 
 | Quota | Code | Needed | Why |
 |---|---|---|---|
-| EC2-VPC Elastic IPs (per region) | `L-0263D0A3` | ≥ 6 free in `eu-north-1`, ≥ 3 free in `eu-west-1` | One EIP per NAT gateway (3 AZs): two clusters in `eu-north-1` (management + workload), one in `eu-west-1` |
-| VPCs per region | `L-F678F1CE` | 8 in `eu-north-1` (raised from the default 5) | One VPC per cluster plus pre-existing non-krops VPCs. e2e account 120392301094: `eu-north-1` quota raised to 8 (5 in use, headroom 3), `eu-west-1` at 3/5 (headroom 2) |
+| EC2-VPC Elastic IPs (per region) | `L-0263D0A3` | ≥ 8 in `eu-north-1` (raised from the default 5) | One EIP per NAT gateway (3 AZs): three clusters in `eu-north-1` (management, dev, staging) |
+| VPCs per region | `L-F678F1CE` | 8 in `eu-north-1` (raised from the default 5) | One CAPA-created VPC per cluster plus pre-existing non-krops VPCs. e2e account 120392301094: `eu-north-1` quota raised to 8 |
 
-The check is per region, and the default regional limit is 5, so a clean
-account stalls mid-run on the second `eu-north-1` cluster. Request the
+The check is per region, and the default regional EIP limit (5) is below the
+6 EIPs the default run creates, so a clean account stalls mid-run. Request the
 increase before the first run with
 `aws service-quotas request-service-quota-increase --service-code ec2 --quota-code <code> --desired-value <n> --region <region>`
 (for VPCs use `--service-code vpc`).
@@ -360,15 +360,20 @@ This initial imperative phase performs these steps:
 
 1. Creates the `mgmt` kind cluster.
 2. Installs the Flux Operator (Helm).
-3. Creates the `flux-github-pat` secret (for Git access) and the `sops-age`
-   secret (the age private key Flux uses to decrypt SOPS-encrypted secrets).
+3. Creates the `flux-github-pat` secret (for Git access), the `sops-age`
+   secret (the age private key Flux uses to decrypt SOPS-encrypted secrets),
+   and the `default/sops-age-resource-set` wrapper Secret, which the
+   `flux-apps` ClusterResourceSets apply to each TrueHear workload cluster so
+   its Flux can decrypt `workload/**/*.sops.yaml`.
 4. Installs a `FluxInstance` that syncs `mgmt/aws/` and hands off to GitOps.
 5. Pivots: moves the CAPI inventory into the self-managed management cluster
    and deletes the kind cluster (see [Pivot recovery](#pivot-recovery)).
 
-Everything downstream (providers, EKS clusters, workload Flux instances, the
-ACK controllers, IAM roles, and S3 buckets) reconciles
-from Git with no further manual steps.
+Everything downstream (providers, the EKS clusters, the workload Flux
+instances, the ACK controllers, and the per-environment Pod Identity roles
+and associations) reconciles from Git with no further manual steps, apart from
+the per-environment post-bootstrap steps in
+[TrueHear environments](./truehear-environments.md).
 
 The local-host environment performs the cluster, Flux Operator, and FluxInstance
 steps in the `mgmt` management cluster, but does not create GitHub or SOPS
@@ -528,22 +533,22 @@ For the AWS chain:
 ```sh
 # Management cluster after a toolbox run
 export KUBECONFIG="$PWD/.kube/krops-mgmt.yaml"
-kubectl get kustomizations -n flux-system            # all Ready (incl. ack-controllers, workload-resources)
-kubectl get clusters.cluster.x-k8s.io -A             # Provisioned
-kubectl get buckets.s3.services.k8s.aws -n ack-system
-kubectl get dbinstances.rds.services.k8s.aws -n ack-system
-kubectl get roles.iam.services.k8s.aws -n ack-system
+kubectl get kustomizations -n flux-system            # all Ready (incl. ack-controllers, dev-pod-identity, staging-pod-identity)
+kubectl get clusters.cluster.x-k8s.io -A             # eu-north-1-management, eu-north-1-dev, eu-north-1-staging Provisioned
+kubectl get roles.iam.services.k8s.aws -n ack-system # truehear-{dev,staging}-*, krops-reader
+kubectl -n ack-system get podidentityassociations.eks.services.k8s.aws
 
-# Workload clusters: export kubeconfigs first (see the AWS page for the
-# toolbox run of `kubeconfigs`), then
+# Workload clusters: export the kubeconfigs directly (the TrueHear cluster
+# names do not match the `kubeconfigs` task's krops naming), then
+#   aws eks update-kubeconfig --name default_eu-north-1-staging-control-plane --region eu-north-1 --kubeconfig .kube/krops-workloads.yaml --alias eu-north-1-staging
 #   export KUBECONFIG=.kube/krops-workloads.yaml
-#   kubectl config use-context eu-north-1-workload   (or eu-west-1-workload)
-kubectl get kustomizations -n flux-system            # root only; workload/base is empty since #346
-
-# AWS
-aws s3api get-bucket-encryption    --bucket krops-<account>-eu-north-1-workload-data
-aws s3api get-public-access-block  --bucket krops-<account>-eu-north-1-workload-data
+#   kubectl config use-context eu-north-1-staging
+kubectl get kustomizations -n flux-system            # platform, truehear-platform, keycloak, vault, redis, rabbitmq (staging)
 ```
+
+There are deliberately no `buckets`/`dbinstances` resources: the S3 and RDS
+ACK controllers and the `workload-resources/` example CRs were removed, so
+`kubectl get buckets.s3.services.k8s.aws` fails with no CRD.
 
 ## Pivot recovery
 
@@ -645,15 +650,19 @@ pivot has not run yet. The machine itself is never wiped: it keeps running
 Talos for the operator to re-use or PXE-boot fresh. There is no orphan
 sweep; the environment owns no cloud resources.
 
-For `aws`, teardown suspends Flux, deletes every workload CAPI Cluster while
-leaving the management Cluster object alone, and waits before touching the
-controller host. It then runs a best-effort AWS sweep for both workload
-regions and the self-managed management cluster. The sweep removes pod
-identity associations, nodegroups, EKS control planes, orphaned RDS instances,
-CAPA-tagged VPC resources in dependency order, versioned S3 buckets, CAPA and
-ACK IAM roles, the `krops-reader` user, and the `clusterawsadm`
-CloudFormation stack. It removes CAPI providers and bootstrap Helm releases
-when the controller host remains reachable.
+For `aws`, teardown suspends Flux, deletes every workload CAPI Cluster (dev
+and staging) while leaving the management Cluster object alone, and waits
+before touching the controller host. It then runs a best-effort AWS sweep per
+environment-level target from `bootstrap.toml` (the `eu-north-1-dev` and
+`eu-north-1-staging` workloads, plus the self-managed management cluster
+itself). The sweep removes nodegroups, EKS control planes, CAPA-tagged VPC
+resources in dependency order, the CAPA per-cluster IAM roles, the
+`truehear-<env>-*` Pod Identity roles (with their attached and inline
+policies), the `krops-reader` user, and the `clusterawsadm` CloudFormation
+stack. The customer-managed ALB `Policy` resources are not deleted and must be
+removed manually; there is no S3/RDS sweep because the repo declares none. It
+removes CAPI providers and bootstrap Helm releases when the controller host
+remains reachable.
 
 The controller-host guard prevents removal while CAPI workload deletion is
 unconfirmed. Do not bypass it unless you accept orphaned infrastructure. If a
@@ -664,7 +673,7 @@ without it.
 
 ACK resources can survive if their workload cluster disappears before their
 custom resources finish deleting. The explicit sweep is what removes those
-orphans, including both workload regions and the self-managed management
+orphans, including both workload environments and the self-managed management
 cluster.
 
 ## Validation
