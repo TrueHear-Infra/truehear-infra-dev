@@ -42,6 +42,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
+        # Full history: the #322 step diffs against BASE_SHA, which a shallow
+        # checkout does not contain.
+        with:
+          fetch-depth: 0
 
       # The sops-keygen and local-host kubeconfig tests (#423) run mise tasks,
       # so mise and the pinned tools (age, kubectl) must be available here.
