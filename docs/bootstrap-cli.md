@@ -251,12 +251,15 @@ management cluster to be removed.
   keeps running Talos for the operator. `AWS_ONLY=1` is rejected because
   there is no AWS orphan sweep for operator-owned hardware.
 - `aws`: suspend Flux, delete and wait for workload CAPI clusters, run the AWS
-  orphan sweep for both workloads and the self-managed management cluster,
-  remove CAPI providers and bootstrap Helm releases when the controller host is
-  still reachable, and enforce the controller-host deletion guard. The sweep
-  covers nodegroups, EKS clusters, RDS, CAPA-tagged
-  VPC resources, versioned S3 buckets, IAM roles and users, and the
-  `clusterawsadm` CloudFormation stack.
+  orphan sweep per environment-level target (dev and staging) plus the
+  self-managed management cluster, remove CAPI providers and bootstrap Helm
+  releases when the controller host is still reachable, and enforce the
+  controller-host deletion guard. The sweep covers nodegroups, EKS clusters,
+  CAPA-tagged VPC resources, the CAPA per-cluster IAM roles, the
+  `truehear-<env>-*` Pod Identity roles, the `krops-reader` user, and the
+  `clusterawsadm` CloudFormation stack. The customer-managed ALB `Policy`
+  resources are not deleted and must be removed manually; there is no S3/RDS
+  sweep (the repo declares none).
 
 `AWS_ONLY=1` is the recovery path when only AWS cleanup remains. A missing tool
 fails preflight before mutation; in the normal AWS path, a missing AWS CLI is
