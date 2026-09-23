@@ -18,7 +18,7 @@ levels, sizing, and the per-environment operator steps.
 
 | Region | Clusters |
 |---|---|
-| `eu-north-1` | `eu-north-1-management` (the self-managed management cluster, provisioned by the pivot), `eu-north-1-dev`, and `eu-north-1-staging` |
+| `eu-north-1` | `eu-north-1-management` (the self-managed management cluster, provisioned by the pivot) and `eu-north-1-staging` |
 
 Every cluster is an EKS control plane (EKS 1.34.6). The management cluster
 runs one ARM (Graviton2) `AWSManagedMachinePool` at the cheapest offered
@@ -36,8 +36,7 @@ including `eks-pod-identity-agent`). The management cluster lives in
   every TrueHear workload cluster: IAM role management scoped to
   `truehear-*` names, customer-managed policy management scoped to
   `truehear-*` names, the `krops-reader` console user actions,
-  `eks:*PodIdentityAssociation*` on `default_eu-north-1-dev-control-plane`
-  and `default_eu-north-1-staging-control-plane`, and `iam:PassRole` to
+  `eks:*PodIdentityAssociation*` on `default_eu-north-1-staging-control-plane`, and `iam:PassRole` to
   `pods.eks.amazonaws.com` on `truehear-*` roles. See
   [AWS authentication & IAM](./aws-iam.md) for the exact actions and the
   least-privilege trade-off.
@@ -55,10 +54,10 @@ including `eks-pod-identity-agent`). The management cluster lives in
   # == clusterawsadm bootstrap iam create-cloudformation-stack --region eu-north-1
   ```
 
-- AWS service quotas for a clean account. The default run creates three EKS
-  clusters in `eu-north-1` (management, `eu-north-1-dev`,
-  `eu-north-1-staging`), each with its own CAPA-created VPC and a NAT gateway
-  per AZ (one EIP each): 6 EIPs and 3 VPCs in the region. The default
+- AWS service quotas for a clean account. The default run creates two EKS
+  clusters in `eu-north-1` (management and `eu-north-1-staging`), each with its
+  own CAPA-created VPC and a NAT gateway per AZ (one EIP each): 4 EIPs and 2
+  VPCs in the region. The default
   regional EIP limit is 5, so request the increase before the first run (see
   [Operations](./operations.md#aws-service-quotas-common-first-run-blockers)).
 
@@ -92,7 +91,7 @@ cluster.
   pattern (`mgmt/aws/infrastructure/ack-controllers/aws-credentials.sops.yaml`).
   The IAM and EKS controllers run on the management cluster and reconcile the
   per-workload-cluster Pod Identity roles, policies, and associations declared
-  in `mgmt/aws/infrastructure/<env>-pod-identity/` (dev, staging). Workload
+  in `mgmt/aws/infrastructure/<env>-pod-identity/` (staging). Workload
   clusters run no controllers and hold no credentials. The static principal's
   policy must cover the union of the former per-controller pod-identity roles;
   see [AWS authentication & IAM](./aws-iam.md) for the full action list and
@@ -101,8 +100,8 @@ cluster.
 ## Commit the identifiers
 
 1. `mgmt/aws/addons/flux-apps/flux-instance.yaml` carries one `cluster-vars`
-   ConfigMap per environment (the `flux-instance-dev` and
-   `flux-instance-staging` ConfigMaps). After the first bootstrap of each
+   ConfigMap per environment (the `flux-instance-staging`
+   ConfigMap). After the first bootstrap of each
    environment, commit the real `VPC_ID` (the ALB controller cannot use
    IMDS with hop limit 1, so it needs the literal VPC ID) and the
    `KEYCLOAK_ACM_CERTIFICATE_ARN` (the ACM certificate the Keycloak ALB
@@ -144,7 +143,7 @@ Bootstrap ends with the pivot: the CAPI inventory moves from the disposable
 and the kind cluster is deleted (see [Pivot recovery](./operations.md#pivot-recovery)).
 
 Teardown is automated for `aws`. `scripts/toolbox-run.sh teardown aws`
-suspends Flux, deletes every workload CAPI Cluster (dev and staging), runs a
+suspends Flux, deletes every workload CAPI Cluster (staging), runs a
 best-effort AWS orphan sweep per environment-level target from
 `bootstrap.toml` (nodegroups, EKS control planes, CAPA-tagged VPC resources,
 CAPA per-cluster IAM roles, the `truehear-<env>-*` Pod Identity roles, the
@@ -162,7 +161,6 @@ Management cluster (`mgmt/aws/`):
 ```
 cert-manager > capi-operator > capi-system > capa-system > clusters (eu-north-1)
                                      + caaph-system > flux-apps
-ack-controllers > dev-pod-identity
 ack-controllers > staging-pod-identity
 ack-controllers > aws-global-iam
 konflate (no dependencies)

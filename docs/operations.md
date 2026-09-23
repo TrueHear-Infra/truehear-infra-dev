@@ -231,7 +231,7 @@ cosign verify-attestation \
 
 | Quota | Code | Needed | Why |
 |---|---|---|---|
-| EC2-VPC Elastic IPs (per region) | `L-0263D0A3` | ≥ 8 in `eu-north-1` (raised from the default 5) | One EIP per NAT gateway (3 AZs): three clusters in `eu-north-1` (management, dev, staging) |
+| EC2-VPC Elastic IPs (per region) | `L-0263D0A3` | ≥ 8 in `eu-north-1` (raised from the default 5) | One EIP per NAT gateway (3 AZs): two clusters in `eu-north-1` (management, staging) |
 | VPCs per region | `L-F678F1CE` | 8 in `eu-north-1` (raised from the default 5) | One CAPA-created VPC per cluster plus pre-existing non-krops VPCs. e2e account 120392301094: `eu-north-1` quota raised to 8 |
 
 The check is per region, and the default regional EIP limit (5) is below the
@@ -533,9 +533,9 @@ For the AWS chain:
 ```sh
 # Management cluster after a toolbox run
 export KUBECONFIG="$PWD/.kube/krops-mgmt.yaml"
-kubectl get kustomizations -n flux-system            # all Ready (incl. ack-controllers, dev-pod-identity, staging-pod-identity)
-kubectl get clusters.cluster.x-k8s.io -A             # eu-north-1-management, eu-north-1-dev, eu-north-1-staging Provisioned
-kubectl get roles.iam.services.k8s.aws -n ack-system # truehear-{dev,staging}-*, krops-reader
+kubectl get kustomizations -n flux-system            # all Ready (incl. ack-controllers, staging-pod-identity)
+kubectl get clusters.cluster.x-k8s.io -A             # eu-north-1-management, eu-north-1-staging Provisioned
+kubectl get roles.iam.services.k8s.aws -n ack-system # truehear-staging-*, krops-reader
 kubectl -n ack-system get podidentityassociations.eks.services.k8s.aws
 
 # Workload clusters: export the kubeconfigs directly (the TrueHear cluster
@@ -650,10 +650,10 @@ pivot has not run yet. The machine itself is never wiped: it keeps running
 Talos for the operator to re-use or PXE-boot fresh. There is no orphan
 sweep; the environment owns no cloud resources.
 
-For `aws`, teardown suspends Flux, deletes every workload CAPI Cluster (dev
-and staging) while leaving the management Cluster object alone, and waits
+For `aws`, teardown suspends Flux, deletes every workload CAPI Cluster (staging)
+while leaving the management Cluster object alone, and waits
 before touching the controller host. It then runs a best-effort AWS sweep per
-environment-level target from `bootstrap.toml` (the `eu-north-1-dev` and
+environment-level target from `bootstrap.toml` (the
 `eu-north-1-staging` workloads, plus the self-managed management cluster
 itself). The sweep removes nodegroups, EKS control planes, CAPA-tagged VPC
 resources in dependency order, the CAPA per-cluster IAM roles, the

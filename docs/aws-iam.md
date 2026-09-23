@@ -8,7 +8,7 @@ need to run inside the cluster whose resources they manage; the workload
 clusters run no controllers and hold no credentials at all.
 
 The purpose here is Pod Identity plumbing for each TrueHear workload cluster
-(dev, staging): the management cluster's ACK IAM controller creates the two
+(staging): the management cluster's ACK IAM controller creates the two
 controller roles (and the ALB controller's customer-managed policy) for
 every workload cluster, and the ACK EKS controller binds them to their
 ServiceAccounts on each cluster. The workload clusters therefore assume
@@ -45,8 +45,9 @@ the CAPA permissions):
   (`eks:CreatePodIdentityAssociation`/`DescribePodIdentityAssociation`/
   `UpdatePodIdentityAssociation`/`DeletePodIdentityAssociation`/
   `ListPodIdentityAssociations`/`TagResource`/`UntagResource`) on
-  `arn:aws:eks:eu-north-1:*:cluster/default_eu-north-1-dev-control-plane` and
-  `arn:aws:eks:eu-north-1:*:podidentityassociation/default_eu-north-1-dev-control-plane/*`,
+  `arn:aws:eks:eu-north-1:*:cluster/default_eu-north-1-staging-control-plane`
+  and
+  `arn:aws:eks:eu-north-1:*:podidentityassociation/default_eu-north-1-staging-control-plane/*`,
   and `iam:PassRole` on `arn:aws:iam::*:role/truehear-*` with
   `iam:PassedToService: pods.eks.amazonaws.com`
 
@@ -59,10 +60,10 @@ cluster with static AWS credentials in Git and already owns every `Cluster`
 object; the workload clusters shed their last credential and controller in
 exchange.
 
-## Pod Identity roles for the workload clusters (dev, staging)
+## Pod Identity roles for the workload cluster (staging)
 
 For each workload cluster, `mgmt/aws/infrastructure/<env>-pod-identity/`
-(`dev-pod-identity/`, `staging-pod-identity/`) has the management cluster's
+(`staging-pod-identity/`) has the management cluster's
 ACK IAM controller create the two roles that cluster's platform
 controllers assume, and its ACK EKS controller create the associations
 that bind each role to one ServiceAccount:
@@ -120,8 +121,8 @@ Then, to browse the repo-created resources in the AWS console:
    `krops-reader` (you will be prompted to set a new password on first
    login).
 2. Use **Switch Role** (account menu, top right) with the account ID and
-   the role's name (for example `truehear-dev-ebs-csi`, or the
-   `truehear-staging-*` equivalent), or use the direct link:
+   the role's name (for example `truehear-staging-ebs-csi`), or use the
+   direct link:
 
    ```
    https://signin.aws.amazon.com/switchrole?roleName=truehear-<env>-ebs-csi&account=<account-id>
@@ -180,7 +181,7 @@ the ACK surface from the prerequisites in [AWS environment](./aws.md).
   `alias/cluster-api-provider-aws-*`, Secrets Manager on
   `aws.cluster.x-k8s.io/*` secrets.
 - Management ACK controllers (`krops-ci-e2e-ack-mgmt`): `truehear-*` IAM
-  role and policy management (the `truehear-dev-*` roles, the
+  role and policy management (the `truehear-staging-*` roles, the
   `krops-reader` user) and pod identity associations on `default_*`
   clusters. No OIDC provider management anywhere: IRSA is unused (pod
   identity instead), which also protects the GitHub OIDC provider itself.

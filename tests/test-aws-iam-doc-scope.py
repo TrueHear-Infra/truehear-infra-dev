@@ -24,7 +24,7 @@ KIND = re.compile(r"^kind:\s*(\S+)\s*$")
 
 # Actions each ACK controller needs to reconcile the CR kinds this repo
 # declares. Grounding:
-# - Role: the ACK IAM controller's role management set; the dev cluster's
+# - Role: the ACK IAM controller's role management set; the staging cluster's
 #   controller roles also attach the AWS-managed EBS CSI policy and the
 #   customer-managed ALB policy (iam:AttachRolePolicy/iam:DetachRolePolicy).
 # - Policy: the ACK IAM controller's customer-managed policy management set

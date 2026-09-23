@@ -1,21 +1,20 @@
 # AWS profile bootstrap runbook (truehear-infra-dev)
 
-Source: the dev-environment plan (`.hermes/plans/2026-09-22_080221-truehear-dev-environment-aws.md`) plus `docs/truehear-environments.md`, `docs/aws.md`, `docs/aws-iam.md`, `docs/secrets.md`, `docs/operations.md` in [TrueHear-Infra/truehear-infra-dev](https://github.com/TrueHear-Infra/truehear-infra-dev), as of `feat/truehear-staging` HEAD `cd98db7` (2026-09-23).
+Source: the AWS environment bootstrap plan (`.hermes/plans/2026-09-22_080221-truehear-dev-environment-aws.md`) plus `docs/truehear-environments.md`, `docs/aws.md`, `docs/aws-iam.md`, `docs/secrets.md`, `docs/operations.md` in [TrueHear-Infra/truehear-infra-dev](https://github.com/TrueHear-Infra/truehear-infra-dev), as of `feat/truehear-staging` HEAD `cd98db7` (2026-09-23).
 
-What it does in one line: a throwaway local kind cluster runs Flux, Flux provisions the `eu-north-1-management` EKS cluster and the `eu-north-1-dev` and `eu-north-1-staging` workload clusters (3 x t3.medium across 3 AZs each) via CAPA, everything pivots into the self-managed management cluster, and each workload cluster's own Flux instance (synced from Git, decrypted with SOPS) delivers its environment: staging runs the full TrueHear stack (platform layer, Keycloak + PostgreSQL, Vault, Redis, RabbitMQ, backend), dev is provisioned but its overlay is still a placeholder.
+What it does in one line: a throwaway local kind cluster runs Flux, Flux provisions the `eu-north-1-management` EKS cluster and the `eu-north-1-staging` workload cluster (3 x t3.medium across 3 AZs) via CAPA, everything pivots into the self-managed management cluster, and each workload cluster's own Flux instance (synced from Git, decrypted with SOPS) delivers its environment: staging runs the full TrueHear stack (platform layer, Keycloak + PostgreSQL, Vault, Redis, RabbitMQ, backend).
 
 The topology this runbook targets (staging branch, the #4 commit series):
 
-- One region (`eu-north-1`), three EKS clusters, all EKS 1.34.6, 20 GiB gp3 roots, on-demand:
+- One region (`eu-north-1`), two EKS clusters, all EKS 1.34.6, 20 GiB gp3 roots, on-demand:
   - `eu-north-1-management` (the self-managed management cluster): 2 x t4g.medium (ARM), min 2 / max 3, AZs eu-north-1a/b/c.
-  - `eu-north-1-dev` (EKS name `default_eu-north-1-dev-control-plane`): 3 x t3.medium, min 3 / max 4.
   - `eu-north-1-staging` (EKS name `default_eu-north-1-staging-control-plane`): 3 x t3.medium, min 3 / max 4.
 - Each workload cluster has its own VPC (CAPA creates one per AWSManagedCluster) and its own Flux instance. The 3-node worker floor is a hard requirement, not a cost choice: Vault needs one member per zone and the RabbitMQ chart one member per node, so scaling below three leaves those StatefulSets Pending.
 - Management cluster runs the ACK `iam` + `eks` controllers only. The krops S3/RDS controllers and the `Bucket`/`DBInstance`/reader-`Role` example CRs are removed; there are no S3 buckets or RDS instances in the account.
-- Per-environment Pod Identity: the ACK controllers on the management cluster create, for each of dev and staging, the roles `truehear-<env>-ebs-csi` (managed policy `AmazonEBSCSIDriverPolicyV2`) and `truehear-<env>-aws-load-balancer-controller` (customer-managed policy pinned to ALB controller v3.5.0) plus two `PodIdentityAssociation`s each. The workload clusters hold no AWS credentials.
+- Per-environment Pod Identity: the ACK controllers on the management cluster create, for staging, the roles `truehear-<env>-ebs-csi` (managed policy `AmazonEBSCSIDriverPolicyV2`) and `truehear-<env>-aws-load-balancer-controller` (customer-managed policy pinned to ALB controller v3.5.0) plus two `PodIdentityAssociation`s. The workload clusters hold no AWS credentials.
 - Workload layering: `workload/platform` (ALB controller 3.5.0 from the `eks-charts` HelmRepository + `truehear-encrypted-gp3` StorageClass) -> `workload/base` (vendored service roots and the in-repo redis/rabbitmq charts) -> `workload/environments/<env>` (the overlay) -> `workload/eu-north-1-<env>` (the sync root). The staging sync root declares six Flux Kustomizations in order: `platform`, `truehear-platform`, `keycloak`, `vault`, `redis`, `rabbitmq` (the last four depend on `truehear-platform`).
-- Per-environment Flux wiring in `mgmt/aws/addons/flux-apps/flux-instance.yaml`: one ConfigMap per environment (`flux-instance-dev`, `flux-instance-staging`), each carrying the workload cluster's `flux-system` namespace, its `cluster-vars` ConfigMap and the `FluxInstance` CR; and one `ClusterResourceSet` per environment (selector `fluxcd: enabled` + `environment: <env>`, strategy `ApplyOnce`) that ships the ConfigMap, the SOPS-encrypted GitHub PAT secret `flux-pull-secret`, and the `sops-age-resource-set` payload.
-- Staging is the first environment to run the full stack (hostname `auth.staging.truehearkiosk.com`). The dev cluster is provisioned and receives its FluxInstance, but `workload/eu-north-1-dev` does not exist yet (`workload/environments/dev/` is a placeholder README), so dev's Flux stays in error until the dev overlay is built. That is expected on this branch.
+- Per-environment Flux wiring in `mgmt/aws/addons/flux-apps/flux-instance.yaml`: one ConfigMap per environment (`flux-instance-staging`), each carrying the workload cluster's `flux-system` namespace, its `cluster-vars` ConfigMap and the `FluxInstance` CR; and one `ClusterResourceSet` per environment (selector `fluxcd: enabled` + `environment: <env>`, strategy `ApplyOnce`) that ships the ConfigMap, the SOPS-encrypted GitHub PAT secret `flux-pull-secret`, and the `sops-age-resource-set` payload.
+- Staging is the environment that runs the full stack (hostname `auth.staging.truehearkiosk.com`).
 
 What runs in staging (mirror-prod rule: same service set as prod, lesser hardware; `docs/truehear-environments.md` is the sizing source of truth):
 
@@ -30,7 +29,7 @@ What runs in staging (mirror-prod rule: same service set as prod, lesser hardwar
 
 Sum of requests about 5 GiB / 3.1 vCPU, which fits 3 x t3.medium with headroom for kube-system.
 
-Before the first live run: tear down whatever the account is currently running from the fork's `main` (old krops topology: eu-west-1 workload cluster, the old eu-north-1 `staging` cluster, the S3 buckets and RDS instance). The staging branch renames that old `eu-north-1/staging` cluster definition to `dev` and adds a new `staging` one, so bootstrapping against a live old environment makes Flux delete the old `Cluster` objects and ACK CRs mid-run.
+Before the first live run: tear down whatever the account is currently running from the fork's `main` (old krops topology: eu-west-1 workload cluster, the old eu-north-1 `staging` cluster, the S3 buckets and RDS instance). The staging branch redefines the eu-north-1 workload clusters, so bootstrapping against a live old environment makes Flux delete the old `Cluster` objects and ACK CRs mid-run.
 
 ## One-time setup
 
@@ -94,7 +93,7 @@ export AWS_ACCESS_KEY_ID=...
 export AWS_SECRET_ACCESS_KEY=...
 ```
 
-The principal needs: EKS + VPC + IAM role creation (CAPA), plus the static ACK principal's union scope in `docs/aws-iam.md`, which now covers both workload clusters: IAM role and customer-managed policy management scoped to `truehear-*` names, the `krops-reader` user actions, `eks:*PodIdentityAssociation*` on `default_eu-north-1-dev-control-plane` and `default_eu-north-1-staging-control-plane`, and `iam:PassRole` to `pods.eks.amazonaws.com` on `truehear-*` roles. The ACK principal is the SOPS-encrypted `aws-credentials` user; grant it outside the repo (same pattern as the CAPA grant).
+The principal needs: EKS + VPC + IAM role creation (CAPA), plus the static ACK principal's union scope in `docs/aws-iam.md`, which now covers the workload cluster: IAM role and customer-managed policy management scoped to `truehear-*` names, the `krops-reader` user actions, `eks:*PodIdentityAssociation*` on `default_eu-north-1-staging-control-plane`, and `iam:PassRole` to `pods.eks.amazonaws.com` on `truehear-*` roles. The ACK principal is the SOPS-encrypted `aws-credentials` user; grant it outside the repo (same pattern as the CAPA grant).
 
 ### 5. CAPA IAM CloudFormation stack (first run only)
 
@@ -105,7 +104,7 @@ krops_mise -E aws run aws-bootstrap
 
 ### 6. Service quotas (clean accounts stall here)
 
-The run provisions three EKS clusters in `eu-north-1` (management, dev, staging), each with its own CAPA-created VPC and two NAT gateways: 6 EIPs and 3 VPCs in total. The default regional EIP quota (5) is already below that, so request increases before the first clean-account run:
+The run provisions two EKS clusters in `eu-north-1` (management, staging), each with its own CAPA-created VPC and two NAT gateways: 4 EIPs and 2 VPCs in total. The default regional EIP quota (5) is already below that, so request increases before the first clean-account run:
 
 ```sh
 aws service-quotas request-service-quota-increase --service-code ec2 --quota-code L-0263D0A3 --desired-value 8 --region eu-north-1
@@ -144,7 +143,7 @@ Reruns are safe: fix whatever failed and run the same command again. `BOOTSTRAP_
 
 ### 9. Commit the post-bootstrap identifiers
 
-Each environment's `cluster-vars` ConfigMap (in `mgmt/aws/addons/flux-apps/flux-instance.yaml`) renders the ALB controller with `${VPC_ID}` and the Keycloak Ingress with `${KEYCLOAK_ACM_CERTIFICATE_ARN}`. Both are unknown until the cluster exists, and the ConfigMap reaches the workload cluster via an `ApplyOnce` ClusterResourceSet, so this step has two parts. Staging is the environment that matters on this branch; the dev pair can be filled at the same time (the dev VPC is `eu-north-1-dev-vpc`) or when the dev overlay lands:
+Each environment's `cluster-vars` ConfigMap (in `mgmt/aws/addons/flux-apps/flux-instance.yaml`) renders the ALB controller with `${VPC_ID}` and the Keycloak Ingress with `${KEYCLOAK_ACM_CERTIFICATE_ARN}`. Both are unknown until the cluster exists, and the ConfigMap reaches the workload cluster via an `ApplyOnce` ClusterResourceSet, so this step has two parts:
 
 ```sh
 # 1. Read the staging VPC ID (CAPA names the VPC <cluster-name>-vpc)
@@ -184,10 +183,10 @@ Until `VPC_ID` is real, the ALB controller HelmRelease stays not-Ready: pods on 
 
 ```sh
 export KUBECONFIG="$PWD/.kube/krops-mgmt.yaml"    # written by the toolbox run
-flux get kustomizations --watch                   # all Ready, incl. ack-controllers, dev-pod-identity, staging-pod-identity
-kubectl get clusters.cluster.x-k8s.io -A          # eu-north-1-management, eu-north-1-dev, eu-north-1-staging Provisioned
-kubectl get roles.iam.services.k8s.aws -n ack-system                 # truehear-{dev,staging}-{ebs-csi,aws-load-balancer-controller}, krops-reader
-kubectl get policies.iam.services.k8s.aws -n ack-system              # truehear-{dev,staging}-aws-load-balancer-controller
+flux get kustomizations --watch                   # all Ready, incl. ack-controllers, staging-pod-identity
+kubectl get clusters.cluster.x-k8s.io -A          # eu-north-1-management, eu-north-1-staging Provisioned
+kubectl get roles.iam.services.k8s.aws -n ack-system                 # truehear-staging-{ebs-csi,aws-load-balancer-controller}, krops-reader
+kubectl get policies.iam.services.k8s.aws -n ack-system              # truehear-staging-aws-load-balancer-controller
 kubectl -n ack-system get podidentityassociations.eks.services.k8s.aws \
   -o custom-columns='NAME:.metadata.name,SYNCED:.status.conditions[?(@.type=="ACK.ResourceSynced")].status'
 ```
@@ -221,7 +220,7 @@ From here, every change is a commit to the repo; Flux reconciles it. Do not `kub
 
 ### Generating the environment secrets
 
-`mise run truehear-env-secrets -- --env <env>` (replaces the old dev-only `keycloak-dev-secrets` task) generates every SOPS-encrypted Secret the overlay for `<env>` needs, all eleven of them: `keycloak-bootstrap-admin`, `keycloak-postgresql-credentials`, `keycloak-postgresql-tls`, `keycloak-tls`, `vault-tls`, `redis-tls`, `redis-auth`, `redis-backend-acl`, `rabbitmq-tls`, `rabbitmq-erlang-cookie`, `rabbitmq-bootstrap-auth`. One throwaway CA per run signs all leaves, so `ca.crt` is the same in every TLS Secret; nothing plaintext touches the working tree. `--keycloak-tls DIR` / `--postgresql-tls DIR` / `--vault-tls DIR` / `--redis-tls DIR` / `--rabbitmq-tls DIR` swap in PKIv2-issued leaves (each dir: `tls.crt`, `tls.key`, `ca.crt`) instead of the generated ones. Refuses to overwrite existing files without `--force` (that is the rotation path). Commit the re-encrypted files; the workload Flux re-decrypts with the `sops-age` Secret the CRS already delivered.
+`mise run truehear-env-secrets -- --env <env>` generates every SOPS-encrypted Secret the overlay for `<env>` needs, all eleven of them: `keycloak-bootstrap-admin`, `keycloak-postgresql-credentials`, `keycloak-postgresql-tls`, `keycloak-tls`, `vault-tls`, `redis-tls`, `redis-auth`, `redis-backend-acl`, `rabbitmq-tls`, `rabbitmq-erlang-cookie`, `rabbitmq-bootstrap-auth`. One throwaway CA per run signs all leaves, so `ca.crt` is the same in every TLS Secret; nothing plaintext touches the working tree. `--keycloak-tls DIR` / `--postgresql-tls DIR` / `--vault-tls DIR` / `--redis-tls DIR` / `--rabbitmq-tls DIR` swap in PKIv2-issued leaves (each dir: `tls.crt`, `tls.key`, `ca.crt`) instead of the generated ones. Refuses to overwrite existing files without `--force` (that is the rotation path). Commit the re-encrypted files; the workload Flux re-decrypts with the `sops-age` Secret the CRS already delivered.
 
 ### Vault: init and unseal
 
@@ -241,7 +240,7 @@ The Keycloak ALB Ingress is internet-facing. Create a Route 53 alias record (A/A
 
 ### Age-key or PAT rotation
 
-The ClusterResourceSets are `ApplyOnce`: a rotated key or PAT lands in the management cluster's `sops-age-resource-set` / `flux-pull-secret`, but each workload cluster keeps the old copy until you re-apply the payload (on staging now; on dev too once it is reconciling):
+The ClusterResourceSets are `ApplyOnce`: a rotated key or PAT lands in the management cluster's `sops-age-resource-set` / `flux-pull-secret`, but each workload cluster keeps the old copy until you re-apply the payload:
 
 ```sh
 kubectl --kubeconfig .kube/krops-workloads.yaml -n flux-system apply -f - \
@@ -269,4 +268,4 @@ A Kustomization that fails decryption surfaces `no keys found` in its conditions
 scripts/toolbox-run.sh teardown aws
 ```
 
-Deletes the workload Cluster objects (dev and staging), then sweeps AWS per environment-level target from `bootstrap.toml` (`eu-north-1-dev` and `eu-north-1-staging`), the self-managed management cluster (through the orphan sweep, never its own Cluster object), and the kind cluster. The sweep covers nodegroups, EKS control planes, CAPA-tagged VPCs and security groups, the CAPA per-cluster IAM roles (name prefix `eu-north-1-<env>`), the four `truehear-<env>-*` Pod Identity roles (with their attached/inline policies), the `krops-reader` user, and the CAPA CloudFormation stack. The two customer-managed ALB `Policy` resources (the `truehear-<env>-aws-load-balancer-controller` policies) are NOT deleted by the sweep: delete them manually afterward (`aws iam delete-policy`) or they orphan in the account. There is no S3/RDS sweep (the repo declares none; the `rds-instance` sweep fields name identifiers that never exist, so the sweep reports "not found"). If the management cluster is already unreachable, `AWS_ONLY=1` (raw container or native run; the wrapper does not forward it) runs just the AWS sweep.
+Deletes the workload Cluster objects (staging), then sweeps AWS per environment-level target from `bootstrap.toml` (`eu-north-1-staging`), the self-managed management cluster (through the orphan sweep, never its own Cluster object), and the kind cluster. The sweep covers nodegroups, EKS control planes, CAPA-tagged VPCs and security groups, the CAPA per-cluster IAM roles (name prefix `eu-north-1-<env>`), the `truehear-<env>-*` Pod Identity roles (with their attached/inline policies), the `krops-reader` user, and the CAPA CloudFormation stack. The customer-managed ALB `Policy` resources (the `truehear-<env>-aws-load-balancer-controller` policies) are NOT deleted by the sweep: delete them manually afterward (`aws iam delete-policy`) or they orphan in the account. There is no S3/RDS sweep (the repo declares none; the `rds-instance` sweep fields name identifiers that never exist, so the sweep reports "not found"). If the management cluster is already unreachable, `AWS_ONLY=1` (raw container or native run; the wrapper does not forward it) runs just the AWS sweep.

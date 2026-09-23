@@ -175,7 +175,7 @@ link to the full guide.
 #### AWS
 
 The reference environment. CAPA provisions an EKS management cluster in
-`eu-north-1` plus the `eu-north-1-dev` and `eu-north-1-staging` workload EKS
+`eu-north-1` plus the `eu-north-1-staging` workload EKS
 clusters; the management cluster runs the ACK IAM and EKS operators creating
 the per-environment Pod Identity roles and associations, so workload clusters
 hold no credentials and run no controllers (and there are no S3 buckets or
@@ -370,7 +370,7 @@ teardown controls, toolbox release, and current parity status.
 | [docs/dependencies.md](docs/dependencies.md) | Renovate-managed dependency updates: covered surfaces, update procedure, intentional differences |
 | [docs/architecture.md](docs/architecture.md) | Architecture diagram, reconciliation order, how workload apps are delivered |
 | [docs/aws.md](docs/aws.md) | AWS environment: clusters, credentials, identifiers, reconciliation order, upgrades, known limitations |
-| [docs/truehear-environments.md](docs/truehear-environments.md) | TrueHear environment levels (dev, staging, prod): layering, environment matrix, sizing, adding an environment, post-bootstrap operator steps |
+| [docs/truehear-environments.md](docs/truehear-environments.md) | TrueHear environment levels (staging, prod): layering, environment matrix, sizing, adding an environment, post-bootstrap operator steps |
 | [docs/wiremock-e2e-spike-findings-aws.md](docs/wiremock-e2e-spike-findings-aws.md) | WireMock e2e Phase 0 spike findings (AWS): CAPA/ACK honor `AWS_ENDPOINT_URL`, no network-layer interception needed |
 | [docs/wiremock-e2e-spike-findings-azure.md](docs/wiremock-e2e-spike-findings-azure.md) | WireMock e2e Phase 0 spike findings (Azure): ASO honors endpoint settings, CAPZ needs the CoreDNS rewrite, `HTTPS_PROXY` is not viable |
 | [docs/wiremock-e2e-spike-findings-gcp.md](docs/wiremock-e2e-spike-findings-gcp.md) | WireMock e2e Phase 0 spike findings (GCP): REST and gRPC both interceptable via CoreDNS rewrite + SAN certs; HTTPS_PROXY covers REST only; CAPG v1.13.1 `serviceEndpoints` covers REST compute only |
@@ -417,7 +417,7 @@ teardown controls, toolbox release, and current parity status.
 │   ├── infrastructure/           cert-manager, CAPI operator, CAPA identity,
 │   │                              ACK controllers (IAM, EKS) and the
 │   │                              per-environment Pod Identity roles,
-│   │                              policies and associations (dev, staging),
+│   │                              policies and associations,
 │   │                              account-global IAM (reader console
 │   │                              user), konflate (rendered Flux PR review)
 │   ├── capi-providers/           capi-system, capa-system (SOPS creds),
@@ -425,7 +425,7 @@ teardown controls, toolbox release, and current parity status.
 │   ├── addons/flux-apps/         Installs Flux on each workload cluster
 │   │                              (HelmChartProxy + per-env ClusterResourceSets)
 │   └── clusters/                 EKS cluster defs: eu-north-1 (management,
-│                                  dev, staging); the self-managed management
+│                                  staging); the self-managed management
 │                                  cluster definition lives in eu-north-1 too
 ├── mgmt/local-host/              OCI-synced CAPI/CAPD local workload cluster
 │   │                              and its management cluster definition
@@ -449,7 +449,6 @@ teardown controls, toolbox release, and current parity status.
     │                              rabbitmq/chart, vault); never edited in place
     ├── platform/                 StorageClass + ALB controller HelmRelease
     ├── environments/             One overlay per environment level:
-    │   ├── dev/                  (placeholder)
     │   ├── staging/              full stack overlay
     │   └── prod/                 (placeholder)
     ├── eu-north-1-staging/       TrueHear sync root (staging)
