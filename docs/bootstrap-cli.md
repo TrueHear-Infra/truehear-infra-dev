@@ -135,7 +135,7 @@ pins together with their declarative counterparts. See
 | `OCI_REPOSITORY` / `OCI_TAG` | `krops` / `latest` | Local-host OCI artifact name |
 | `BOOTSTRAP_PIVOT` | `1` | Any value other than literal `1` skips pivot |
 | `MGMT_KUBECONFIG` | `~/.kube/krops-mgmt.yaml` | Exported management kubeconfig for native fallback runs |
-| `MGMT_READY_TIMEOUT` | `40m` for aws, `15m` for local-host, `30m` for local-talos (PXE install + first Talos boot) | Management cluster definition and provisioning waits |
+| `MGMT_READY_TIMEOUT` | `40m` for aws, `15m` for local-host | Management cluster definition and provisioning waits |
 | `MGMT_POLL_INTERVAL` | `10` seconds | Management cluster definition and provisioning poll |
 | `BOOTSTRAP_KUBECONTEXT` | config value `kind-mgmt` | Source context required by pivot |
 | `PIVOT_SKIP_DELETE` | `0` | Literal `1` keeps kind after a successful pivot |
@@ -181,7 +181,7 @@ depend on engine- or version-specific error text.
 
 1. **Preflight:** validate the environment and required tools, select a running
    container engine, and perform the GitHub token/age-key checks for
-   GitHub-synced environments (`aws`, `local-talos`). A fallback native run
+   GitHub-synced environments (`aws`). A fallback native run
    requires
    `kind`, `helm`, `kubectl`, `clusterctl`, and `mise`; OCI-synced
    environments (`local-host`) also require `flux` and `curl`.
@@ -211,9 +211,9 @@ krops-bootstrap teardown [PROFILE]
 
 | Variable | Default | Effect |
 |---|---|---|
-| `AWS_ONLY` | `0` | Literal `1` skips Kubernetes steps and runs only the AWS orphan sweep; invalid with `local-host` and `local-talos` |
+| `AWS_ONLY` | `0` | Literal `1` skips Kubernetes steps and runs only the AWS orphan sweep; invalid with `local-host` |
 | `FORCE_KIND_DELETE` | `0` | Literal `1` removes the controller host even when CAPI cluster deletion was not confirmed |
-| `CLUSTER_DELETE_TIMEOUT` | `1200` seconds | CAPI cluster deletion wait (aws workloads, local-talos management) |
+| `CLUSTER_DELETE_TIMEOUT` | `1200` seconds | CAPI cluster deletion wait (aws workloads) |
 | `PROVIDER_DELETE_TIMEOUT` | `300` seconds | CAPI provider deletion wait |
 | `MGMT_KUBECONFIG` | `~/.kube/krops-mgmt.yaml` | Post-pivot controller-host kubeconfig |
 
@@ -222,7 +222,6 @@ Teardown checks required tools before mutation:
 | Mode | Required tools |
 |---|---|
 | `local-host` | `kind`, `kubectl`; `AWS_ONLY=1` is rejected |
-| `local-talos` | `kind`, `kubectl`; `AWS_ONLY=1` is rejected |
 | normal `aws` | `kind`, `helm`, `kubectl`, `xargs`; AWS CLI is optional and its absence skips the orphan sweep |
 | `AWS_ONLY=1` | AWS CLI only |
 
@@ -236,7 +235,7 @@ kind context or the management kubeconfig; never the operator's current
 context) and treats a *failed* kubectl query as an unknown state, never as
 "nothing left to delete". A failed listing or lookup (auth, forbidden, API
 outage) therefore aborts the teardown with a nonzero exit and leaves the
-management cluster and its controllers intact, so in-flight CAPA/CABPT
+management cluster and its controllers intact, so in-flight CAPA
 deprovisioning can continue; re-run it once the query works. A successful
 empty listing, a named lookup reporting `NotFound`, or the API server
 reporting the resource type as not installed is the only evidence
@@ -246,11 +245,6 @@ management cluster to be removed.
 - `local-host`: suspend the workload Kustomization, delete the CAPD workload
   cluster and wait for its containers to disappear, remove kind or the
   self-managed management containers, then remove the local registry.
-- `local-talos`: suspend Flux and delete every CAPI Cluster, the management
-  cluster included; the deletion IS the release, and CAPT returns the
-  machine's Hardware to the Tinkerbell pool. The machine is never wiped: it
-  keeps running Talos for the operator. `AWS_ONLY=1` is rejected because
-  there is no AWS orphan sweep for operator-owned hardware.
 - `aws`: suspend Flux, delete and wait for workload CAPI clusters, run the AWS
   orphan sweep per environment-level target (staging) plus the
   self-managed management cluster, remove CAPI providers and bootstrap Helm
@@ -277,8 +271,5 @@ lifecycle; it does not select a separate CLI subcommand.
 The three shell scripts remain as native reference and fallback paths until
 full parity runs pass for all environments. Local-host bootstrap, pivot, and
 post-pivot teardown have completed parity runs. AWS full-parity runs still gate
-script retirement. The local-talos environment has completed its hardware
-acceptance run (issue #105, closed) through the CLI; the documented
-PXE/Tinkerbell-Workflow provisioning transport still needs a run (issue #225).
-Toolbox releases are published (see above); no Podman-host acceptance run is
-recorded.
+script retirement. Toolbox releases are published (see above); no Podman-host
+acceptance run is recorded.

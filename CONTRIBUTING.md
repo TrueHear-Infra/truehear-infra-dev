@@ -19,7 +19,7 @@ Work is organized into numbered milestones that build on each other.
 |---|---|---|
 | 1-renovate-foundations | closed | Renovate as the hosted GitHub App, the central version catalog retired, a shared integration-test harness (`tests/renovate_harness.py`) |
 | 2-rust-bootstrap | closed | `krops-bootstrap`, the Rust CLI covering bootstrap, pivot, and teardown; `bootstrap.toml` as the repository-owned configuration; the toolbox container image |
-| 3-environments | open | `local-talos` wiring and docs are on `main`; the hardware acceptance run (#105) is pending |
+| 3-environments | closed | the `aws` and `local-host` environments are on `main` |
 | 4-hardening | open | Air-gap supply chain (#80): digest pins everywhere, signed SBOMs, offline verification, transactional updates. The build, signing, and publication model needs a design decision first (#138) |
 
 Two facts follow from that table and shape what a contributor can rely on:
@@ -63,9 +63,7 @@ decision, or need an operator with AWS or bare-metal access.
   is not duplicated; milestone descriptions state ordering constraints where
   they exist.
 - Add a provider or environment. `docs/extending.md` documents the pattern
-  (CAPA reference wiring, then the Talos and k0smotron sections).
-  `mgmt/local-talos/` is the worked example of a complete new environment
-  landing as a series of small PRs (#155, #169, #171).
+  (CAPA reference wiring, then the k0smotron section).
 - Improve the documentation. Every `docs/` page is fair game; the README
   should get shorter, not longer (#151).
 - Review open pull requests. Rendered Flux diffs make review approachable
@@ -102,8 +100,8 @@ Requirements:
   (`mise x node@24 -- ...`).
 - Python 3 for the test scripts under `tests/` and `airgap/tests/`.
 
-Environment layers: `mise.aws.toml`,
-`mise.local-host.toml`, and `mise.local-talos.toml` add per-environment
+Environment layers: `mise.aws.toml` and
+`mise.local-host.toml` add per-environment
 tools and helper tasks; they run in the toolbox image (`--entrypoint mise`,
 see `docs/operations.md`), and the host `mise install` is only needed for
 `mise run validate` and the docs tasks. Contributors without an AWS account
@@ -153,7 +151,7 @@ Additional conventions:
   Renovate.
 - Commit messages follow Conventional Commits: `feat`, `fix`, `docs`,
   `chore`, `refactor`, `test`, `ci`, with an optional scope such as
-  `feat(local-talos):` or `docs(agents):`. Reference the issue in the body
+  `feat(local-host):` or `docs(agents):`. Reference the issue in the body
   (`Refs #74`, `Closes #172`).
 - Write the body for a reader who was not in the room: what was wrong, what
   changed, how it was verified. Merged PRs #171 and #176 are good examples.
@@ -215,9 +213,6 @@ Run the checks that match what you touched. CI runs all of them.
   in two regions and removes the `clusterawsadm` CloudFormation stack. Run it
   only in an account you control, with the quotas in `docs/operations.md`
   established, and confirm the sweep completed.
-- `local-talos` needs a reachable Tinkerbell stack and a machine you are
-  willing to PXE-boot. Teardown releases the Hardware resource and never
-  wipes the disk.
 - The nightly `air-gapped` workflow runs on `main` only. Air-gap changes are
   verified locally with `airgap/scripts/offline-run.sh`; see
   `docs/airgap.md` for the checklist.
@@ -225,7 +220,7 @@ Run the checks that match what you touched. CI runs all of them.
 ## Reporting problems
 
 - Bugs and proposals: open a GitHub issue. State the environment
-  (`aws`, `local-host`, `local-talos`), the commit on `main`, the command,
+  (`aws` or `local-host`), the commit on `main`, the command,
   and the observed output.
 - Security-sensitive findings (a leaked credential, a bypass of the SOPS or
   signing chain): do not open a public issue. Contact a maintainer listed on

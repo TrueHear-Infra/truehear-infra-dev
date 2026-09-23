@@ -54,10 +54,9 @@ To add an app to a TrueHear environment:
 The management cluster is not AWS-only. Providers are declared as CAPI
 operator CRs (`operator.cluster.x-k8s.io/v1alpha2`) under
 `mgmt/<environment>/capi-providers/` (for example `mgmt/aws/capi-providers/` for
-AWS EKS, `mgmt/local-host/capi-providers/` for local Docker, and
-`mgmt/local-talos/capi-providers/` for Talos and Tinkerbell), one directory per
+AWS EKS or `mgmt/local-host/capi-providers/` for local Docker), one directory per
 provider namespace, and registered in that environment's `capi-providers/flux-ks.yaml`.
-The operator resolves the well-known provider names (`aws`, `talos`,
+The operator resolves the well-known provider names (`aws`,
 `k0sproject-k0smotron`) from the same built-in registry `clusterctl` uses, so
 a provider is just a typed CR with a pinned version:
 
@@ -95,46 +94,6 @@ CAPA is the provider this repo already runs; use it as the template:
   cluster (`mgmt/aws/infrastructure/ack-controllers/` and
   `mgmt/aws/infrastructure/<env>-pod-identity/`; see
   [docs/aws-iam.md](./aws-iam.md)).
-
-### Talos (CABPT + CACPPT)
-
-Talos supplies the bootstrap and control plane providers only; pair it with
-any infrastructure provider (CAPT, CAPA, ...) that supplies the
-machines. The worked in-repo example is the `local-talos` environment:
-`mgmt/local-talos/` pairs the Talos providers with Tinkerbell (CAPT) to
-PXE-boot a bare-metal management machine. See the architecture diagram in
-[docs/local-talos-infra.svg](local-talos-infra.svg).
-
-1. Two directories, matching the upstream namespace conventions:
-
-   ```yaml
-   # mgmt/local-talos/capi-providers/cabpt-system/provider.yaml
-   apiVersion: operator.cluster.x-k8s.io/v1alpha2
-   kind: BootstrapProvider
-   metadata:
-     name: talos
-     namespace: cabpt-system
-   spec:
-     version: "v0.7.6"
-     fetchConfig:
-       url: "https://github.com/sidero-community/cluster-api-bootstrap-provider-talos/releases"
-   ```
-
-   The control plane provider is the same shape
-   (`cacppt-system/provider.yaml`: ControlPlaneProvider `talos` v0.6.4).
-2. Set `fetchConfig.url` explicitly to the
-   [sidero-community](https://github.com/sidero-community) releases: the CAPI
-   operator's embedded clusterctl defaults resolve `talos` to the archived
-   siderolabs org. The sidero-community line serves the v1beta2 contract
-   (`cluster.x-k8s.io/v1beta2: v1beta1` in the released metadata), so the
-   contract note above does not impose a migration deadline on it.
-3. No cloud credentials: Talos machine secrets are generated per cluster by
-   `TalosControlPlane` / `TalosConfig`. Always set `talosVersion` explicitly
-   (e.g. `v1.14`) so a provider upgrade does not silently change the
-   generated machine config.
-4. In cluster definitions, swap `KubeadmControlPlane` for `TalosControlPlane`
-   and `KubeadmConfigTemplate` for `TalosConfigTemplate`; the infrastructure
-   templates stay whatever the paired infra provider supplies.
 
 ### k0smotron
 

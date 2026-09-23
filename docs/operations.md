@@ -64,8 +64,7 @@ docker run --rm -it \
 Generate the age key and re-encrypt secrets for a new fork before the AWS run;
 see [Secret management](./secrets.md). If credentials come from an AWS shared
 configuration instead of environment variables, also mount that configuration
-under `/root/.aws` and pass `AWS_PROFILE`. The local-talos environment needs
-the same Git source, PAT, and age key, but no AWS credentials.
+under `/root/.aws` and pass `AWS_PROFILE`.
 
 Podman socket locations differ across rootful Linux, rootless Linux, and
 `podman machine`. Use the checked-in wrapper to resolve the host mount and the
@@ -235,57 +234,6 @@ joseph.shriner@polarsquad.com, the escalation path for budget alerts. The
 email subscription only activates after the SNS confirmation email is
 accepted.
 
-### local-talos prerequisites
-
-In addition to the PAT and age key shared with the AWS environment
-(local-talos syncs its configuration from GitHub, so bootstrap seeds the same
-`flux-github-pat` and `sops-age` secrets), the `local-talos` environment
-needs:
-
-- A reachable [Tinkerbell](https://tinkerbell.org/) stack on the machine's
-  network, and a `Hardware` resource describing the target machine. The
-  stack is operator-owned infrastructure this repository does not deploy.
-  Minimal setup:
-  1. Install the [tink stack](https://tinkerbell.org/docs/setup/install/)
-     (Smee serving DHCP/PXE/iPXE, plus the Tinkerbell API) on a helper
-     Kubernetes cluster that can reach the machine's L2 network.
-  2. Create the `Hardware` CR naming the machine's MAC address and reserved
-     IP; its name must match the `hardwareName` in
-     `mgmt/local-talos/clusters/management/cluster.yaml` (`talos-mgmt-01`
-     as checked in).
-  3. Customize the installer image through `spec.imageFactory` on the
-     TalosConfig (declared under `controlPlaneConfig` in
-     `mgmt/local-talos/clusters/management/cluster.yaml`): the block mirrors
-     the Image Factory schematic (official system extensions, extra kernel
-     args, an SBC overlay, and the bootloader). CABPT v0.8.x resolves the
-     block against the Image Factory API and renders
-     `machine.install.image`; a bare minor `talosVersion` (the committed
-     `v1.14`) resolves to the newest non-prerelease patch the Factory serves.
-     The committed definition declares no `imageFactory` block, so CABPT
-     renders no installer-image override. The earlier mechanism, the
-     `hardware.tinkerbell.org/installer-image` Hardware annotation mirrored
-     into `status.installerImage` by the CAPT fork, is no longer read by
-     CABPT v0.8.x.
-  4. Set the machine to PXE-boot from the network Smee serves.
-
-     **Installer image handoff status:** the CABPT pin moved to v0.8.2
-     (Renovate #295), which deleted the `status.installerImage` lookup and
-     moved the installer image to `spec.imageFactory`. The CAPT fork v0.7.1
-     still mirrors the Hardware annotation, but nothing consumes it on the
-     current pins, so the annotation path is a no-op. The `spec.imageFactory`
-     path has not been exercised live: the #105 hardware acceptance run
-     predates the CABPT bump, and the documented PXE/Tinkerbell-Workflow
-     path still needs a run (issue #225). Until that run, verify the image
-     the machine actually receives and do not treat the installer image as
-     Git-pinned. Fork retirement is tracked in issue #266, blocked on
-     upstream PR tinkerbell/cluster-api-provider-tinkerbell#604; with the
-     installer-image mirror no longer consumed, that PR is the fork's only
-     remaining differentiator.
-- Two site-specific values in
-  `mgmt/local-talos/clusters/management/cluster.yaml` before the first run:
-  `spec.controlPlaneEndpoint.host` (the machine's stable IP) and the
-  `TinkerbellMachineTemplate` `hardwareName` (the Hardware CR name).
-
 ## Configuration
 
 Copy the env template and fill it in. Both the lifecycle wrapper
@@ -298,9 +246,8 @@ $EDITOR .env
 ```
 
 The Flux Operator chart is pulled anonymously for all environments. The
-GitHub PAT is needed for the AWS and local-talos environments (both sync
-from GitHub); AWS credentials and `AWS_REGION` are only needed with the AWS
-environment.
+GitHub PAT is needed for the AWS environment (it syncs from GitHub); AWS
+credentials and `AWS_REGION` are only needed with the AWS environment.
 
 Repository-owned lifecycle configuration lives in `bootstrap.toml`. It defines
 the environment names, sync paths, management clusters, imperative chart
@@ -317,7 +264,6 @@ selects the environment (the default is `aws` from `bootstrap.toml`):
 ```sh
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh bootstrap            # aws
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh bootstrap local-host
-TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh bootstrap local-talos
 ```
 
 > Before the first AWS bootstrap, generate an age key for SOPS. See
@@ -363,19 +309,6 @@ Flux control plane on that cluster, and reconciles a reachable Podinfo workload.
 It exercises the complete cluster-to-workload GitOps lifecycle locally; only
 the AWS-specific infrastructure and ACK resources are outside its scope.
 
-The local-talos environment performs the same kind bootstrap and Flux
-handoff, but syncs from GitHub like AWS and pivots onto operator-provided
-bare metal: CAPT PXE-boots the machine named by the Tinkerbell `Hardware`
-resource, installs Talos with the image resolved from the Hardware's
-`hardware.tinkerbell.org/installer-image` annotation, and the single-node
-Talos cluster takes over as the management cluster. The management-ready
-wait defaults to 30 minutes (`mgmt-ready-timeout` in `bootstrap.toml`) to
-cover the PXE install and first Talos boot. Scope fence: management-only.
-There is no workload cluster and no CNI addon; Talos ships flannel. Verify
-after the pivot with the persisted `.kube/krops-mgmt.yaml` and
-`kubectl get nodes`: one Ready node on the committed endpoint, schedulable
-for the full management plane (`allowSchedulingOnControlPlanes`).
-
 **OCI Registry (local-host environment only):**
 - Provides a local container registry for development workflows
 - Enables developers to build and push OCI artifacts from git checkouts
@@ -407,9 +340,8 @@ preserving those directory paths when the artifact is pulled. Keeping the
 source scope narrow also prevents local credentials and age private keys
 elsewhere in the repository from being packaged.
 
-The AWS and local-talos environments add the GitHub/SOPS secrets and
-configure the FluxInstance to sync `mgmt/aws/` or `mgmt/local-talos/`
-respectively.
+The AWS environment adds the GitHub/SOPS secrets and configures the
+FluxInstance to sync `mgmt/aws/`.
 
 Watch reconciliation after a toolbox run with the persisted management
 kubeconfig:
@@ -565,7 +497,6 @@ The wrapper runs the Rust subcommand in the toolbox:
 ```sh
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh teardown            # aws
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh teardown local-host
-TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh teardown local-talos
 ```
 
 The retained `./teardown.sh` reference path and a native
@@ -583,9 +514,9 @@ The main controls keep the shell interface:
 
 | Variable | Default | Effect |
 |---|---|---|
-| `AWS_ONLY` | `0` | Literal `1` runs only the AWS orphan sweep; invalid with `local-host` and `local-talos` |
+| `AWS_ONLY` | `0` | Literal `1` runs only the AWS orphan sweep; invalid with `local-host` |
 | `FORCE_KIND_DELETE` | `0` | Literal `1` overrides the final controller-host deletion guard |
-| `CLUSTER_DELETE_TIMEOUT` | `1200` seconds | CAPI cluster deletion wait (aws workloads, local-talos management) |
+| `CLUSTER_DELETE_TIMEOUT` | `1200` seconds | CAPI cluster deletion wait (aws workloads) |
 | `PROVIDER_DELETE_TIMEOUT` | `300` seconds | CAPI provider deletion wait |
 | `MGMT_KUBECONFIG` | `~/.kube/krops-mgmt.yaml` (in the toolbox that is the checkout's `.kube/` mount) | Post-pivot controller-host kubeconfig |
 
@@ -594,7 +525,6 @@ The hard preflight depends on the mode:
 | Mode | Required tools |
 |---|---|
 | `local-host` | `kind`, `kubectl`; `AWS_ONLY=1` is rejected |
-| `local-talos` | `kind`, `kubectl`; `AWS_ONLY=1` is rejected |
 | normal `aws` | `kind`, `helm`, `kubectl`, `xargs`; a missing AWS CLI skips the orphan sweep |
 | `AWS_ONLY=1` | AWS CLI only |
 
@@ -606,14 +536,6 @@ For `local-host`, teardown suspends the workload Kustomization, deletes the
 CAPD workload cluster, waits for its containers to disappear, removes either
 the pre-pivot kind cluster or the post-pivot self-managed management
 containers, and removes `krops-registry` last.
-
-For `local-talos`, teardown suspends Flux and deletes every CAPI Cluster,
-the management cluster included: the deletion IS the release, and CAPT
-returns the machine's `Hardware` entry to the Tinkerbell pool. It waits for
-the deprovision to complete, then deletes the kind bootstrap cluster if the
-pivot has not run yet. The machine itself is never wiped: it keeps running
-Talos for the operator to re-use or PXE-boot fresh. There is no orphan
-sweep; the environment owns no cloud resources.
 
 For `aws`, teardown suspends Flux, deletes every workload CAPI Cluster (staging)
 while leaving the management Cluster object alone, and waits
