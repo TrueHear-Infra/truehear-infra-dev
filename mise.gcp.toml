@@ -1,6 +1,6 @@
 # gcp environment task layer (issue #72).
 #
-# Like aws and azure, this environment syncs mgmt/gcp from GitHub and pivots
+# Like aws, this environment syncs mgmt/gcp from GitHub and pivots
 # into a GKE management cluster built by CAPG. gcloud is needed for the
 # one-time project preparation (gcp-bootstrap), for the wif-federate hook
 # bootstrap-rs runs right after kind creation (post-kind-create-task), and

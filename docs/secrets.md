@@ -6,7 +6,7 @@ safely in Git and Flux decrypts them at reconcile time.
 
 - **`.sops.yaml`** declares the age *public* key (safe to commit) and a rule
   that encrypts only `data`/`stringData` fields of any `*.sops.yaml` file
-  under `mgmt/aws/`, `mgmt/azure/`, `mgmt/gcp/` or `workload/`.
+  under `mgmt/aws/`, `mgmt/gcp/` or `workload/`.
 - The age *private* key lives in `age.agekey` (gitignored). The bootstrap
   loads it into the cluster as the `sops-age` secret in `flux-system`.
 
@@ -76,14 +76,6 @@ View a decrypted secret without changing it:
 ```sh
 krops_mise run sops-decrypt <file>.sops.yaml
 ```
-
-## Azure credentials
-
-Azure holds no secret at rest (issue #236): CAPZ and the bundled ASO
-authenticate with workload identity, so there is nothing to rotate here. The
-only Azure credentials involved are the operator's own `az login` session and
-the age key used for the remaining SOPS-encrypted files above
-([azure.md](./azure.md) covers the identity flow).
 
 ## Age key on the workload clusters
 

@@ -75,18 +75,16 @@ ENV MISE_DATA_DIR=/usr/local/share/mise \
 
 COPY --from=build /usr/local/bin/krops-bootstrap /usr/local/bin/krops-bootstrap
 COPY bootstrap-rs/toolbox-entrypoint.sh /usr/local/bin/toolbox-entrypoint.sh
-COPY mise.toml mise.aws.toml mise.azure.toml mise.gcp.toml /opt/krops/
+COPY mise.toml mise.aws.toml mise.gcp.toml /opt/krops/
 
 RUN chmod +x /usr/local/bin/toolbox-entrypoint.sh
 
 # Install every tool the configs pin except the dev-only toolchains the
 # lifecycle never invokes (go, python, zarf: airgap builds run on the
 # host, not inside the toolbox). The aws layer (aws-cli, clusterawsadm)
-# and the azure layer (azure-cli, for the arc-federate hook and
-# azure-bootstrap) install too; credentials arrive at runtime. azure-cli
-# is a pipx backend tool and needs the pinned python present to install.
-# The gcp layer (gcloud, for the wif-federate hook and gcp-bootstrap)
-# installs after the python layer: on arm64 the tarball ships no bundled
+# installs too; credentials arrive at runtime. The gcp layer (gcloud,
+# for the wif-federate hook and gcp-bootstrap) installs after the python
+# layer: on arm64 the tarball ships no bundled
 # python, so the installer's provisioning probe needs a bare `python`
 # (the apt python-is-python3 above plus the pinned python 3.14.7 here).
 # gke-gcloud-auth-plugin is not in the SDK tarball, so it is added as a
@@ -98,7 +96,6 @@ RUN cd /opt/krops \
     && mise install -y kind helm kubectl clusterctl flux2 sops age \
     && mise -E aws install -y aws-cli clusterawsadm \
     && mise install -y python uv \
-    && mise -E azure install -y azure-cli \
     && mise -E gcp install -y gcloud \
     && "$(mise -E gcp which gcloud)" components install gke-gcloud-auth-plugin --quiet \
     && mise reshim

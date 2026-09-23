@@ -133,11 +133,6 @@ if ! python3 tests/test-cert-manager-version-consistency.py; then
   echo "    FAILED: cert-manager version consistency" >&2
   fail=1
 fi
-echo "==> azure identity chain"
-if ! uv run python tests/test-azure-identity-chain.py; then
-  echo "    FAILED: azure identity chain" >&2
-  fail=1
-fi
 echo "==> gcp identity chain"
 if ! uv run python tests/test-gcp-identity-chain.py; then
   echo "    FAILED: gcp identity chain" >&2
@@ -228,7 +223,6 @@ if [ -z "${MGMT_CLUSTER:-}" ]; then
   case "${KROPS_PROFILE:-aws}" in
     local-host) MGMT_CLUSTER=local-management;;
     local-talos) MGMT_CLUSTER=local-talos-management;;
-    azure) MGMT_CLUSTER=swedencentral-management;;
     gcp) MGMT_CLUSTER=europe-north1-management;;
     *) MGMT_CLUSTER=eu-north-1-management;;
   esac

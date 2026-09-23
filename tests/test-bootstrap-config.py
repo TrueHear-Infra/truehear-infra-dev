@@ -22,22 +22,18 @@ CHART_MANIFESTS = {
     "flux-operator": [
         "mgmt/aws/addons/flux-apps/flux-operator.yaml",
         "mgmt/local-host/addons/flux-apps/flux-operator.yaml",
-        "mgmt/azure/addons/flux-apps/flux-operator.yaml",
         "mgmt/gcp/addons/flux-apps/flux-operator.yaml",
     ],
     "cert-manager": [
         "mgmt/aws/infrastructure/cert-manager/helmrelease.yaml",
         "mgmt/local-host/infrastructure/cert-manager/helmrelease.yaml",
         "mgmt/local-talos/infrastructure/cert-manager/helmrelease.yaml",
-        "mgmt/azure/infrastructure/cert-manager/helmrelease.yaml",
         "mgmt/gcp/infrastructure/cert-manager/helmrelease.yaml",
-        "workload/azure-base/cert-manager/helmrelease.yaml",
     ],
     "capi-operator": [
         "mgmt/aws/infrastructure/capi-operator/helmrelease.yaml",
         "mgmt/local-host/infrastructure/capi-operator/helmrelease.yaml",
         "mgmt/local-talos/infrastructure/capi-operator/helmrelease.yaml",
-        "mgmt/azure/infrastructure/capi-operator/helmrelease.yaml",
         "mgmt/gcp/infrastructure/capi-operator/helmrelease.yaml",
     ],
 }
@@ -64,9 +60,12 @@ def main() -> int:
         return 1
 
     charts = config.get("charts", {})
-    for required_env in ("local-host", "aws", "local-talos", "azure", "gcp"):
+    for required_env in ("local-host", "aws", "local-talos", "gcp"):
         if required_env not in config.get("environments", {}):
             failures.append(f"environments.{required_env} section missing from bootstrap.toml")
+    for retired_env in ("azure",):
+        if retired_env in config.get("environments", {}):
+            failures.append(f"environments.{retired_env} was retired; remove its section from bootstrap.toml")
     for chart, manifests in CHART_MANIFESTS.items():
         declared = charts.get(chart)
         if declared is None:

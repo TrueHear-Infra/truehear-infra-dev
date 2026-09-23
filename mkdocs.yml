@@ -77,7 +77,6 @@ nav:
   - Secrets: secrets.md
   - AWS environment: aws.md
   - TrueHear environments: truehear-environments.md
-  - Azure environment: azure.md
   - GCP environment: gcp.md
   - AWS authentication and IAM: aws-iam.md
   - Workload resources: workload-resources.md
@@ -85,7 +84,6 @@ nav:
   - Dependencies: dependencies.md
   - Air-gapped krops: airgap.md
   - WireMock e2e spike findings (AWS): wiremock-e2e-spike-findings-aws.md
-  - WireMock e2e spike findings (Azure): wiremock-e2e-spike-findings-azure.md
   - WireMock e2e spike findings (GCP): wiremock-e2e-spike-findings-gcp.md
   - Proposals:
       - Overview: proposals/README.md

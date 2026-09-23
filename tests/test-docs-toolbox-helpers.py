@@ -15,11 +15,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # `mise -E <env> run <task>` line inside a fenced block is a regression.
 MOVED_TASKS = (
     "sops-keygen", "sops-encrypt", "sops-decrypt", "sops-updatekeys",
-    "aws-bootstrap", "aws-credentials", "azure-bootstrap", "arc-federate",
+    "aws-bootstrap", "aws-credentials",
     "gcp-bootstrap", "wif-federate", "mgmt-kubeconfig", "kubeconfigs", "oci-push",
 )
 # Tools whose bare `mise x -- <tool>` form is likewise host-only.
-MOVED_TOOLS = ("sops", "age-keygen", "clusterawsadm", "az", "gcloud")
+MOVED_TOOLS = ("sops", "age-keygen", "clusterawsadm", "gcloud")
 
 HOST_MISE = re.compile(
     r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*mise\s+(?:"

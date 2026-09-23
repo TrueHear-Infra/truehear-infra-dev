@@ -186,17 +186,14 @@ Rules that apply to every helper run:
   denied` under `/usr/local/share/mise`.
 - mise loads `/workspace/.env` (`env_file` in `mise.toml`) and its values
   override the process environment. Cloud credentials for `aws-bootstrap`,
-  `aws-credentials`, `azure-bootstrap`, and `gcp-bootstrap` come from `.env`
+  `aws-credentials`, and `gcp-bootstrap` come from `.env`
   first; to run with other credentials, pass `-e MISE_ENV_FILE=/dev/null`
   and the variables by name (`-e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY
   -e AWS_SESSION_TOKEN -e AWS_REGION`). A bare `-e NAME` forwards the host
   value without placing it in argv.
-- Interactive logins (`az login --use-device-code`, `gcloud auth login
-  --no-launch-browser`) need `-it`. The gcloud session persists in the
-  checkout's gitignored `.gcloud/` (`-e CLOUDSDK_CONFIG=/workspace/.gcloud`);
-  the Azure session persists through `-v "$PWD/.azure:/root/.azure"` (add
-  `.azure/` to your global gitignore or keep it outside the checkout with
-  another host path).
+- Interactive logins (`gcloud auth login --no-launch-browser`) need `-it`.
+  The gcloud session persists in the checkout's gitignored `.gcloud/`
+  (`-e CLOUDSDK_CONFIG=/workspace/.gcloud`).
 - Podman: replace `docker` with `podman` and the socket source with the one
   `scripts/toolbox-run.sh` resolves (`podman info --format
   '{{.Host.RemoteSocket.Path}}'`).
@@ -333,17 +330,8 @@ selects the environment (the default is `aws` from `bootstrap.toml`):
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh bootstrap            # aws
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh bootstrap local-host
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh bootstrap local-talos
-TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh bootstrap azure      # after azure-bootstrap
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh bootstrap gcp        # after gcp-bootstrap
 ```
-
-Azure: see [azure.md](./azure.md) for the subscription prep step that
-precedes the `azure` wrapper run (`azure-bootstrap` registers the
-providers — including the Arc ones — and creates the shared resource group
-and the `krops-capz` / `krops-aso` user-assigned identities with their role
-grants; nothing it prints is secret). After the kind cluster is created,
-bootstrap-rs runs the `arc-federate` mise task, which Arc-connects kind with
-an OIDC issuer for CAPZ/ASO workload identity (issue #236).
 
 GCP: see [gcp.md](./gcp.md) for the project prep step that precedes
 the `gcp` wrapper run (`gcp-bootstrap` enables the APIs and creates the
@@ -600,8 +588,6 @@ TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh teardown            # aws
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh teardown local-host
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh teardown local-talos
 ```
-
-Azure teardown is manual; the CLI prints the steps.
 
 The retained `./teardown.sh` reference path and a native
 `krops-bootstrap teardown [PROFILE]` run are the fallbacks. The positional

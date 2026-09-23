@@ -5,8 +5,8 @@ platform. A disposable local [kind](https://kind.sigs.k8s.io/) cluster
 bootstraps [Flux](https://fluxcd.io/), provisions the self-managed management
 cluster through CAPI, and is deleted after a `clusterctl move` pivot. The
 management cluster then reconciles itself and all downstream infrastructure from
-this repository across multiple supported environments: AWS (`aws`), Azure
-(`azure`), GCP (`gcp`), local Docker (`local-host`), bare-metal Talos
+this repository across multiple supported environments: AWS (`aws`), GCP
+(`gcp`), local Docker (`local-host`), bare-metal Talos
 (`local-talos`), and an air-gapped bundle (`airgap`).
 
 The operator normally runs the imperative lifecycle through the
@@ -165,125 +165,9 @@ workload/eu-north-1-staging declares the six Flux Kustomizations.
 See [AWS authentication & IAM](./aws-iam.md) for how the ACK controllers
 authenticate and what the per-environment Pod Identity roles create.
 
-## Azure environment (azure)
-
-The `azure` environment mirrors `aws`: a disposable kind cluster bootstraps
-Flux, CAPZ v1.27.0 provisions an AKS management cluster (`swedencentral-management`),
-the pivot moves the management objects into it, and each AKS workload cluster
-runs its own Azure Service Operator (ASO 2.19.0) reconciling Azure resources from
-`workload/azure-base/`.
-
-No Azure secret exists at rest: the management cluster authenticates CAPZ and
-the bundled ASO with workload identity against the `krops-capz`
-User-Assigned Identity (federated to the kind cluster's Arc OIDC issuer at
-bootstrap, and to the management cluster's own OIDC issuer post-pivot), while
-workload clusters hold no credentials at all. The bundled ASO on the
-management cluster reconciles identity resources (`krops-aso` and `krops-capz`
-identities, resource group role assignments, and Federated Identity
-Credentials), enabling the workload ASO to authenticate with Entra ID
-Workload Identity.
-
-See the architecture diagram in [docs/azure-infra.svg](azure-infra.svg) and
-the [Azure environment guide](./azure.md).
-
-![krops azure architecture](azure-infra.svg)
-
-```mermaid
-flowchart TD
-    subgraph bootstrap["Bootstrap (one-time, krops-bootstrap CLI)"]
-        KIND[kind cluster: mgmt, disposable]
-        HELM[Helm: flux-operator + FluxInstance]
-        SEC[Secrets: flux-github-pat + sops-age]
-        KIND --> HELM
-        KIND --> SEC
-    end
-
-    subgraph git["Git: github.com/polarsquad/krops"]
-        REPO[(main branch)]
-    end
-
-    HELM -->|"sync: mgmt/azure/"| REPO
-
-    subgraph mgmt["Management cluster (self-managed after the pivot) - Flux Kustomizations"]
-        FS[flux-system root]
-        CM[cert-manager]
-        CO[capi-operator]
-        CAPIS[capi-system]
-        CAPZS["capz-system (CAPZ v1.27.0 + bundled ASO)"]
-        CAAPH[caaph-system]
-        AZID["azure-identity (secret-free)<br/>AzureClusterIdentity: WorkloadIdentity"]
-        ASOWI["aso-workload-identity<br/>krops-aso + krops-capz identities + FICs + roles"]
-        SWEDENC["swedencentral cluster def<br/>swedencentral-management (self-hosted)<br/>swedencentral-workload"]
-        FA["flux-apps (SOPS pull secret)<br/>HelmChartProxy + ClusterResourceSets"]
-
-        FS --> CM --> CO --> CAPIS --> CAPZS
-        CAPIS --> CAAPH --> FA
-        CAPZS --> AZID --> ASOWI
-        CAPZS --> SWEDENC
-        AZID --> SWEDENC
-    end
-
-    REPO --> FS
-
-    subgraph azure["Azure: swedencentral"]
-        AKS[AKS: swedencentral-workload<br/>AzureASOManagedControlPlane + MachinePool]
-        UAI[User-Assigned Identity: krops-aso]
-        FIC[Federated Identity Credential: workload-identity]
-        ROLE[Role Assignment: Contributor on data RG]
-        RG[(Resource Group: krops-swedencentral-workload-data)]
-        VNET[(VNet: vnet-swedencentral-workload<br/>subnet: snet-postgres<br/>private DNS zone)]
-        SA[(Storage Account: blob container 'data')]
-        PSQL[(PostgreSQL Flexible Server<br/>private access, Entra-only auth)]
-    end
-
-    SWEDENC -->|CAPZ provisions| AKS
-    ASOWI -->|bundled ASO creates| UAI
-    ASOWI -->|bundled ASO creates| FIC
-    ASOWI -->|bundled ASO creates| ROLE
-    ROLE -.->|scopes to| RG
-
-    FA -->|"HelmChartProxy: flux-operator<br/>CRS: FluxInstance + cluster-vars + pull secret"| WF
-
-    subgraph wl["Workload cluster swedencentral-workload"]
-        WF["Flux (sync: workload/swedencentral-01)"]
-        WCM["cert-manager Ks"]
-        WASO["aso Ks<br/>ASO 2.19.0 (Workload Identity)"]
-        WNET["networking Ks<br/>dependsOn: aso"]
-        WSTOR["storage Ks<br/>dependsOn: aso"]
-        WPSQL["postgres Ks<br/>dependsOn: aso, networking"]
-
-        WF --> WCM --> WASO --> WNET --> WPSQL
-        WASO --> WSTOR
-    end
-
-    WF --> REPO
-    UAI -.->|Entra Workload Identity token| WASO
-    FIC -.->|federates workload SA| WASO
-    WNET -->|reconciles| VNET
-    WSTOR -->|reconciles in data RG| SA
-    WPSQL -->|reconciles with private DNS| PSQL
-```
-
-### Reconciliation order (Azure management cluster)
-
-```
-cert-manager ▶ capi-operator ▶ capi-system ▶ capz-system (bundled ASO)
-                                           ├▶ azure-identity ▶ aso-workload-identity
-                                           ├▶ clusters (swedencentral)
-                                           └▶ caaph-system ▶ flux-apps
-```
-
-### Reconciliation order (Azure workload cluster)
-
-```
-cert-manager ▶ aso (ASO 2.19.0 via Workload Identity) ▶ networking (VNet + delegated subnet + DNS)
-                                                      ├▶ storage (Storage Account + blob container)
-                                                      └▶ postgres (dependsOn: aso, networking)
-```
-
 ## GCP environment (gcp)
 
-The `gcp` environment mirrors `azure`: a disposable kind cluster bootstraps
+The `gcp` environment mirrors `aws`: a disposable kind cluster bootstraps
 Flux, CAPG v1.13.1 provisions a GKE management cluster
 (`europe-north1-management`), the pivot moves the management objects into
 it, and the GKE workload cluster runs its own Config Connector (KCC 1.156.0)

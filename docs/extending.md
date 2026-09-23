@@ -57,7 +57,7 @@ operator CRs (`operator.cluster.x-k8s.io/v1alpha2`) under
 AWS EKS, `mgmt/local-host/capi-providers/` for local Docker, and
 `mgmt/local-talos/capi-providers/` for Talos and Tinkerbell), one directory per
 provider namespace, and registered in that environment's `capi-providers/flux-ks.yaml`.
-The operator resolves the well-known provider names (`aws`, `azure`, `gcp`,
+The operator resolves the well-known provider names (`aws`, `gcp`,
 `talos`, `k0sproject-k0smotron`) from the same built-in registry `clusterctl` uses, so
 a provider is just a typed CR with a pinned version:
 
@@ -96,21 +96,6 @@ CAPA is the provider this repo already runs; use it as the template:
   `mgmt/aws/infrastructure/<env>-pod-identity/`; see
   [docs/aws-iam.md](./aws-iam.md)).
 
-### Azure (CAPZ)
-
-CAPZ v1.27.0 speaks the v1beta1 contract (accepted by CAPI v1.14 until the v1beta1 removal) and bundles Azure Service Operator (ASO) v2.19.0, which backs the managed-AKS path.
-
-The `azure` environment is the worked example: `mgmt/azure/` (see
-[azure.md](./azure.md)). Reuse it rather than adding CAPZ to `mgmt/aws/`:
-the provider is `capi-providers/capz-system/providers.yaml`
-(`InfrastructureProvider azure` v1.27.0 with `configSecret: capz-variables`
-carrying `ADDITIONAL_ASO_CRDS`), credentials are one SOPS Secret read by
-both `AzureClusterIdentity` and ASO's `credential-from` annotation, and
-clusters use `AzureASOManagedCluster` / `AzureASOManagedControlPlane` /
-`AzureASOManagedMachinePool` with the ASO resources inline (their names are
-literal final names: kustomize's `namePrefix` does not descend into
-`spec.resources`).
-
 ### GCP (CAPG + Config Connector)
 
 CAPG v1.13.1 speaks the v1beta1 contract (accepted by CAPI v1.14 until the
@@ -140,7 +125,7 @@ than adding CAPG to another environment:
 ### Talos (CABPT + CACPPT)
 
 Talos supplies the bootstrap and control plane providers only; pair it with
-any infrastructure provider (CAPT, CAPA, CAPZ, ...) that supplies the
+any infrastructure provider (CAPT, CAPA, ...) that supplies the
 machines. The worked in-repo example is the `local-talos` environment:
 `mgmt/local-talos/` pairs the Talos providers with Tinkerbell (CAPT) to
 PXE-boot a bare-metal management machine. See the architecture diagram in

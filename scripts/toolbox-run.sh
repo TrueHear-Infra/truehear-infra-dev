@@ -15,7 +15,7 @@ Env:
   TOOLBOX_IMAGE   image reference (default: ${TOOLBOX_IMAGE:-ghcr.io/polarsquad/krops-toolbox:latest};
                   build locally with: docker build -f bootstrap-rs/Dockerfile \\
                     -t krops-toolbox:dev . && TOOLBOX_IMAGE=krops-toolbox:dev)
-  KROPS_PROFILE aws | azure | gcp | local-host | local-talos
+  KROPS_PROFILE aws | gcp | local-host | local-talos
                   (default: the mise environment in use)
 EOF
   exit 2
@@ -122,9 +122,6 @@ PASS_ENV=(
   -e AWS_ACCESS_KEY_ID
   -e AWS_SECRET_ACCESS_KEY
   -e AWS_SESSION_TOKEN
-  -e AZURE_SUBSCRIPTION_ID
-  -e AZURE_LOCATION
-  -e AZURE_CONFIG_DIR
   -e GCP_PROJECT
   -e GCP_REGION
   -e CLOUDSDK_CONFIG

@@ -3,8 +3,8 @@
 
 Widening the group to include the digest-pinned CAPI images (#354) risked
 either under-matching (images stay split from their release-asset PRs, the
-bug this widening fixed) or over-matching (an unrelated docker image, or
-CAPZ's one-minor-at-a-time override, gets pulled in by accident).
+bug this widening fixed) or over-matching (an unrelated docker image gets
+pulled in by accident).
 """
 
 import unittest
@@ -26,7 +26,7 @@ class ClusterApiGroupingTest(unittest.TestCase):
             ("registry.k8s.io/cluster-api/kubeadm-control-plane-controller", "docker", True),
             ("gcr.io/k8s-staging-cluster-api/capd-manager", "docker", True),
             ("registry.k8s.io/cluster-api-helm/cluster-api-helm-controller", "docker", True),
-            # must NOT join: CAPZ's one-minor-at-a-time override takes precedence
+            # must NOT join: not a managed dependency any more (azure profile retired)
             ("kubernetes-sigs/cluster-api-provider-azure", "github-releases", False),
             # must NOT join: unrelated images/deps, including a registry.k8s.io
             # image outside the cluster-api/cluster-api-helm namespaces

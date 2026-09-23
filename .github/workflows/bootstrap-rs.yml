@@ -102,14 +102,14 @@ jobs:
           docker run --rm --entrypoint sh -v "$PWD:/workspace:ro" \
             -w /workspace -e MISE_AUTO_INSTALL=0 krops-toolbox:ci -c '
             for t in kind kubectl helm clusterctl flux sops age age-keygen aws clusterawsadm \
-                     az gcloud gke-gcloud-auth-plugin docker xargs git curl mise uv python3 bash; do
+                     gcloud gke-gcloud-auth-plugin docker xargs git curl mise uv python3 bash; do
               command -v "$t" >/dev/null || { echo "::error::$t missing on PATH"; exit 1; }
             done
             krops-bootstrap --help >/dev/null
             for task in sops-keygen sops-encrypt sops-decrypt sops-updatekeys mgmt-kubeconfig aws-credentials validate; do
               mise tasks ls 2>/dev/null | grep -q "^$task " || { echo "::error::mise task $task not visible from /workspace"; exit 1; }
             done
-            for env in aws azure gcp local-host local-talos; do
+            for env in aws gcp local-host local-talos; do
               mise -E "$env" tasks ls 2>/dev/null | grep -q "^kubeconfigs " || { echo "::error::mise -E $env kubeconfigs task not visible"; exit 1; }
             done
             mise -E aws which clusterawsadm >/dev/null || { echo "::error::mise -E aws cannot resolve clusterawsadm without installing"; exit 1; }'
