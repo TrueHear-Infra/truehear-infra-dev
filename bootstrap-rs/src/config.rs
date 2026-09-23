@@ -93,8 +93,8 @@ pub struct Environment {
     /// Substitution overrides for pivot-manifests (issue #72): values that
     /// must differ between the bootstrap cluster (where Flux substituted them
     /// from its ConfigMaps) and the pivot target. Applied on top of the
-    /// flux-system ConfigMap data before `${VAR}` replacement (gcp: the
-    /// workload-identity provider is `kind` in kind and `mgmt` afterwards).
+    /// flux-system ConfigMap data before `${VAR}` replacement (e.g. a
+    /// provider name that differs between kind and the target).
     #[serde(default)]
     pub pivot_manifest_vars: IndexMap<String, String>,
     /// Teardown constants for this environment (issue #100).

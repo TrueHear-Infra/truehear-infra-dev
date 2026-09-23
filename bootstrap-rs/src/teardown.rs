@@ -2707,8 +2707,8 @@ mod tests {
             manual: Some("hand".into()),
             ..Default::default()
         };
-        let msg = manual_teardown_refusal("gcp", &td).unwrap();
-        assert!(msg.starts_with("teardown is manual for the 'gcp' environment:"));
+        let msg = manual_teardown_refusal("example", &td).unwrap();
+        assert!(msg.starts_with("teardown is manual for the 'example' environment:"));
         assert!(msg.ends_with("hand"));
         assert!(manual_teardown_refusal("aws", &crate::config::TeardownEnv::default()).is_none());
     }

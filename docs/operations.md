@@ -104,15 +104,6 @@ allowlist into the container:
 - AWS: `AWS_REGION`, `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`,
   `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`
 
-`CLOUDSDK_CONFIG` is forwarded twice: once through the GCP allowlist entry
-(an operator-set value, if any), then again as an explicit `-e
-CLOUDSDK_CONFIG=/workspace/.gcloud` appended after it. The container engine
-takes the last value for a repeated `-e` key, so the explicit one wins by
-design: the toolbox always uses the repo-local `.gcloud/` directory (inside
-the `/workspace` mount), shared with the host gcp session
-([gcp.md](./gcp.md)), never an operator override. Keep the two in sync if
-the mount path ever changes.
-
 It does not pass `BOOTSTRAP_CONFIG`, `REGISTRY_READY_RETRIES`,
 `LOCAL_RECONCILE_TIMEOUT`, `MGMT_KUBECONFIG`, `MGMT_READY_TIMEOUT`,
 `MGMT_POLL_INTERVAL`, `BOOTSTRAP_KUBECONTEXT`, or the teardown controls
@@ -185,15 +176,12 @@ Rules that apply to every helper run:
   tries to install them, and as a non-root user that fails with `Permission
   denied` under `/usr/local/share/mise`.
 - mise loads `/workspace/.env` (`env_file` in `mise.toml`) and its values
-  override the process environment. Cloud credentials for `aws-bootstrap`,
-  `aws-credentials`, and `gcp-bootstrap` come from `.env`
+  override the process environment. Cloud credentials for `aws-bootstrap`
+  and `aws-credentials` come from `.env`
   first; to run with other credentials, pass `-e MISE_ENV_FILE=/dev/null`
   and the variables by name (`-e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY
   -e AWS_SESSION_TOKEN -e AWS_REGION`). A bare `-e NAME` forwards the host
   value without placing it in argv.
-- Interactive logins (`gcloud auth login --no-launch-browser`) need `-it`.
-  The gcloud session persists in the checkout's gitignored `.gcloud/`
-  (`-e CLOUDSDK_CONFIG=/workspace/.gcloud`).
 - Podman: replace `docker` with `podman` and the socket source with the one
   `scripts/toolbox-run.sh` resolves (`podman info --format
   '{{.Host.RemoteSocket.Path}}'`).
@@ -330,16 +318,7 @@ selects the environment (the default is `aws` from `bootstrap.toml`):
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh bootstrap            # aws
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh bootstrap local-host
 TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh bootstrap local-talos
-TOOLBOX_IMAGE="$TOOLBOX_IMAGE" scripts/toolbox-run.sh bootstrap gcp        # after gcp-bootstrap
 ```
-
-GCP: see [gcp.md](./gcp.md) for the project prep step that precedes
-the `gcp` wrapper run (`gcp-bootstrap` enables the APIs and creates the
-`krops-capg` / `krops-kcc` / `krops-reader` service accounts and the `krops`
-workload identity pool; nothing it prints is secret). After the kind cluster
-is created, bootstrap-rs runs the `wif-federate` mise task, which registers
-the kind cluster's OIDC provider and the impersonation bindings for CAPG and
-Config Connector.
 
 > Before the first AWS bootstrap, generate an age key for SOPS. See
 > [Secret management](./secrets.md) for the host and toolbox-only setups.

@@ -188,19 +188,6 @@ jobs:
       - name: cert-manager version consistency (#322)
         run: python3 tests/test-cert-manager-version-consistency.py
 
-      - name: GCP identity chain cross-check
-        run: |
-          uv sync --locked
-          uv run python tests/test-gcp-identity-chain.py
-
-      - name: GCP postgres settings
-        run: |
-          uv sync --locked
-          uv run python tests/test-gcp-postgres.py
-
-      - name: KCC operator pin cross-check
-        run: python3 tests/test-kcc-operator-pin.py
-
       - name: ACK CR scope vs documented principal (#411)
         run: python3 tests/test-aws-iam-doc-scope.py
 

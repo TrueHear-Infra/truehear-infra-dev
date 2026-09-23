@@ -19,7 +19,7 @@ Work is organized into numbered milestones that build on each other.
 |---|---|---|
 | 1-renovate-foundations | closed | Renovate as the hosted GitHub App, the central version catalog retired, a shared integration-test harness (`tests/renovate_harness.py`) |
 | 2-rust-bootstrap | closed | `krops-bootstrap`, the Rust CLI covering bootstrap, pivot, and teardown; `bootstrap.toml` as the repository-owned configuration; the toolbox container image |
-| 3-environments | open | `local-talos` wiring and docs are on `main`; the hardware acceptance run (#105) is pending. GCP via Config Connector (#72) is unstarted |
+| 3-environments | open | `local-talos` wiring and docs are on `main`; the hardware acceptance run (#105) is pending |
 | 4-hardening | open | Air-gap supply chain (#80): digest pins everywhere, signed SBOMs, offline verification, transactional updates. The build, signing, and publication model needs a design decision first (#138) |
 
 Two facts follow from that table and shape what a contributor can rely on:
@@ -48,7 +48,7 @@ Labels mark the entry points:
   documentation and script fixes.
 - [`help wanted`](https://github.com/polarsquad/krops/labels/help%20wanted):
   larger items the maintainers are not actively working on, including the
-  GCP provider and the Python test tooling.
+  Python test tooling.
 - `bug`, `documentation`, `enhancement` classify the change type.
 
 Issues without those labels are either in progress, blocked on a design
@@ -102,7 +102,7 @@ Requirements:
   (`mise x node@24 -- ...`).
 - Python 3 for the test scripts under `tests/` and `airgap/tests/`.
 
-Environment layers: `mise.aws.toml`, `mise.gcp.toml`,
+Environment layers: `mise.aws.toml`,
 `mise.local-host.toml`, and `mise.local-talos.toml` add per-environment
 tools and helper tasks; they run in the toolbox image (`--entrypoint mise`,
 see `docs/operations.md`), and the host `mise install` is only needed for

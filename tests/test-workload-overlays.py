@@ -10,8 +10,7 @@ This test pins the invariants across those files:
   in flux-instance.yaml),
 - no literal subnet IDs, ACM ARNs or account IDs in non-sops manifests,
 - every Flux Kustomization sources GitRepository flux-system and
-  substitutes cluster-vars (the two legacy operator roots that need no
-  substitution are excepted by name),
+  substitutes cluster-vars,
 - the ALB controller ServiceAccount appears in every pod-identity
   associations.yaml,
 - each sync root declares the six Kustomizations in order and renders,
@@ -41,20 +40,13 @@ FLUX_ROOTS = [
     "workload/environments/staging/redis",
     "workload/environments/staging/rabbitmq",
 ]
-# Legacy GCP operator roots that deliberately carry no
-# postBuild.substituteFrom: kcc-operator ships its webhook certs in the
-# pinned bundle.
-NO_SUBSTITUTION = {
-    "workload/gcp-base/kcc-operator/flux-ks.yaml",
-}
+NO_SUBSTITUTION = set()
 FORBIDDEN = re.compile(r"subnet-[0-9a-f]{8,}|arn:aws:acm:|974771261200|120392301094")
 
 
 def aws_scan_dirs():
     """The AWS TrueHear workload tree, the only consumer of the AWS
-    cluster-vars ConfigMap. The legacy gcp-base root and its sync root
-    substitute from their own environment ConfigMap channel, so their
-    variables are outside this check."""
+    cluster-vars ConfigMap."""
     dirs = [
         REPO_ROOT / "workload/base",
         REPO_ROOT / "workload/platform",

@@ -21,7 +21,7 @@ for GitOps. If those resource APIs already say what you mean, krops does not
 wrap them to say it again.
 
 This repository demonstrates the pattern end to end on AWS EKS,
-Google GKE, local Docker clusters, and a Tinkerbell-provisioned
+local Docker clusters, and a Tinkerbell-provisioned
 [Talos Linux](https://www.talos.dev/) machine. A disposable
 [kind](https://kind.sigs.k8s.io/) cluster bootstraps Flux,
 CAPI pivots control to a self-managed management cluster, and the Rust
@@ -154,7 +154,7 @@ in their native consumer files and update PRs open weekly. See
 
 ### Environments
 
-Four management environments share one shape: a disposable kind bootstrap
+Three management environments share one shape: a disposable kind bootstrap
 cluster runs Flux, a CAPI infrastructure provider builds the self-managed
 management cluster, the pivot moves the management objects into it, and the
 management cluster then reconciles itself and its workload clusters from this
@@ -164,7 +164,6 @@ layers its own tools and tasks in a `mise.<env>.toml`.
 | Environment | Management cluster | CAPI provider | Workload operator | Config sync |
 |---|---|---|---|---|
 | `aws` | EKS `eu-north-1-management` | CAPA | ACK (IAM, EKS) | GitHub |
-| `gcp` | GKE `europe-north1-management` | CAPG | Config Connector | GitHub |
 | `local-host` | CAPD `local-management` (Docker) | CAPD | Flux + Podinfo | local OCI registry |
 | `local-talos` | single-node Talos on bare metal | CAPT + CABPT + CACPPT | none (management-only) | GitHub |
 
@@ -205,36 +204,6 @@ identifiers, reconciliation order, upgrades, known limitations). IAM and the
 per-environment Pod Identity roles: [AWS authentication & IAM](docs/aws-iam.md).
 TrueHear environment levels and operator steps:
 [TrueHear environments](docs/truehear-environments.md).
-
-#### GCP
-
-CAPG v1.13.1 provisions a GKE management cluster in `europe-north1` plus a
-workload GKE cluster; the workload cluster runs its own Config Connector (KCC)
-reconciling GCP resources from `workload/gcp-base/`. No GCP secret exists at
-rest: CAPG and the management-side Config Connector authenticate with
-Workload Identity Federation against the `krops` pool (no service-account
-keys), and the workload cluster uses GKE-native Workload Identity. It needs a
-GitHub PAT, an age key, and a project with a billing account where you hold
-Owner.
-
-![krops gcp architecture](docs/gcp-infra.svg)
-
-```sh
-docker run --rm -it -v "$PWD:/workspace" -w /workspace -e CLOUDSDK_CONFIG=/workspace/.gcloud \
-  --entrypoint gcloud "$TOOLBOX_IMAGE" auth login --no-launch-browser
-docker run --rm -it -v "$PWD:/workspace" -w /workspace \
-  -e CLOUDSDK_CONFIG=/workspace/.gcloud -e GCP_PROJECT -e MISE_AUTO_INSTALL=0 \
-  --entrypoint mise "$TOOLBOX_IMAGE" -E gcp run gcp-bootstrap   # once: APIs, service accounts, WIF pool
-scripts/toolbox-run.sh bootstrap gcp     # kind + Flux + CAPG; then pivot
-export KUBECONFIG="$PWD/.kube/krops-mgmt.yaml"
-docker run --rm -it -v "$PWD:/workspace" -w /workspace -v "$PWD/.kube:/root/.kube" \
-  -e KUBECONFIG=/workspace/.kube/krops-mgmt.yaml -e KUBECONFIG_FILE=/root/.kube/krops-workloads.yaml \
-  -e CLOUDSDK_CONFIG=/workspace/.gcloud -e MISE_AUTO_INSTALL=0 \
-  --entrypoint mise "$TOOLBOX_IMAGE" -E gcp run kubeconfigs
-```
-
-Full guide: [GCP environment](docs/gcp.md). Teardown is manual for now; the
-CLI prints the steps.
 
 #### Local host
 
@@ -342,14 +311,11 @@ teardown controls, toolbox release, and current parity status.
 | [docs/aws.md](docs/aws.md) | AWS environment: clusters, credentials, identifiers, reconciliation order, upgrades, known limitations |
 | [docs/truehear-environments.md](docs/truehear-environments.md) | TrueHear environment levels (staging, prod): layering, environment matrix, sizing, adding an environment, post-bootstrap operator steps |
 | [docs/wiremock-e2e-spike-findings-aws.md](docs/wiremock-e2e-spike-findings-aws.md) | WireMock e2e Phase 0 spike findings (AWS): CAPA/ACK honor `AWS_ENDPOINT_URL`, no network-layer interception needed |
-| [docs/wiremock-e2e-spike-findings-gcp.md](docs/wiremock-e2e-spike-findings-gcp.md) | WireMock e2e Phase 0 spike findings (GCP): REST and gRPC both interceptable via CoreDNS rewrite + SAN certs; HTTPS_PROXY covers REST only; CAPG v1.13.1 `serviceEndpoints` covers REST compute only |
 | [docs/aws-iam.md](docs/aws-iam.md) | Management-cluster ACK controllers (static SOPS credentials, union scope), the per-environment Pod Identity roles, the `krops-reader` console user |
-| [docs/workload-resources.md](docs/workload-resources.md) | Workload-cluster cloud resources: AWS (none, retired), GCP (bucket, Cloud SQL, reader identity) |
 | [docs/konflate.md](docs/konflate.md) | Rendered Flux PR review: GitHub Actions gate, in-cluster instance, write-back to PRs, tokens |
 | [docs/secrets.md](docs/secrets.md) | SOPS + age secret management, key setup, credential rotation |
 | [docs/operations.md](docs/operations.md) | Toolbox runtime, prerequisites, quotas, bootstrap, pivot recovery, teardown, validation |
 | [docs/extending.md](docs/extending.md) | Adding a workload cluster, adding apps to the workload clusters, adding other providers (Talos, k0smotron) |
-| [docs/gcp.md](docs/gcp.md) | GCP environment: project prep, WIF credentials (no keys), GKE clusters, Config Connector on the workload cluster, upgrades |
 | [docs/airgap.md](docs/airgap.md) | Zarf air-gap bundle: package build, offline deploy, verification checklist, update drill |
 | [docs/proposals/](docs/proposals/README.md) | Design proposals under review (not yet decided or implemented) |
 
@@ -408,8 +374,6 @@ teardown controls, toolbox release, and current parity status.
 │   ├── capi-providers/           cabpt-system, cacppt-system, capi-system,
 │   │                              capt-system (Tinkerbell)
 │   └── clusters/                 management (self-managed)
-├── mgmt/gcp/                      GKE management cluster (CAPG + Config
-│   │                              Connector operator + WIF identities)
 └── workload/                     Synced by each WORKLOAD cluster's Flux
     ├── base/                     TrueHear service roots and vendored charts
     │                              (keycloak, truehear-platform, redis/chart,
@@ -419,11 +383,7 @@ teardown controls, toolbox release, and current parity status.
     │   ├── staging/              full stack overlay
     │   └── prod/                 (placeholder)
     ├── eu-north-1-staging/       TrueHear sync root (staging)
-    ├── gcp-base/                 KCC operator + ConfigConnector, PSA range,
-    │                              storage bucket, Cloud SQL, per-cluster
-    │                              reader GSA
-    ├── local-host/               OCI-synced Podinfo workload overlay
-    └── europe-north1-01/         Per-cluster overlay -> gcp-base
+    └── local-host/               OCI-synced Podinfo workload overlay
 ```
 
 ## License
