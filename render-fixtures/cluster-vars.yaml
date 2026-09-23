@@ -1,0 +1,35 @@
+# Render-only fixture for konflate/flate (offline, no cluster state).
+# The real per-environment ConfigMap/flux-system/cluster-vars lives as a
+# payload inside the flux-instance-<env> ConfigMaps (mgmt/aws/addons,
+# mgmt/azure/addons, mgmt/gcp/addons) and is delivered to each workload
+# cluster by ApplyOnce ClusterResourceSets. flate cannot see workload
+# cluster state, so this placeholder copy satisfies
+# postBuild.substituteFrom during PR diff rendering. Values are
+# non-empty placeholders on purpose: a missing/empty substitution renders
+# as YAML null and breaks charts that b64enc the value (ASO).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-vars
+  namespace: flux-system
+data:
+  AWS_REGION: "eu-north-1"
+  CLUSTER_NAME: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  EKS_CLUSTER_NAME: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  AWS_ACCOUNT_ID: "000000000000"
+  ENVIRONMENT: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  VPC_ID: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  KEYCLOAK_HOSTNAME: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  KEYCLOAK_ACM_CERTIFICATE_ARN: "REPLACE_WITH_ACM_CERT_ARN"
+  GCP_REGION: "europe-north1"
+  GCP_PROJECT: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  GCP_PROJECT_NUMBER: "000000000000"
+  GCP_NETWORK: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  GCP_ZONE: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  AZURE_SUBSCRIPTION_ID: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  AZURE_TENANT_ID: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  AZURE_CLIENT_ID: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  AZURE_LOCATION: "northeurope"
+  AZURE_ASO_CLIENT_ID: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  AZURE_ASO_PRINCIPAL_ID: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+  STORAGE_ACCOUNT_NAME: "REPLACE_AFTER_FIRST_BOOTSTRAP"
