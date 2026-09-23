@@ -6,7 +6,7 @@
 #   2. Delete CAPI workload clusters (CAPA tears down all AWS resources per cluster)
 #   3. Wait for CAPI clusters to be fully deprovisioned
 #   4. Clean up orphaned AWS resources (nodegroups, EKS, RDS,
-#      VPCs, S3 buckets, IAM, CFN) — in BOTH regions ($REGIONS)
+#      VPCs, S3 buckets, IAM, CFN) — for every target in $WORKLOAD_TARGETS
 #   5. Delete CAPI providers (operator deprovisions controllers)
 #   6. Uninstall the FluxInstance Helm release
 #   7. Uninstall the Flux Operator Helm release
@@ -140,12 +140,12 @@ fi
 export AWS_PAGER=""
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-REGIONS="eu-north-1 eu-west-1"
+REGIONS="eu-north-1"
 
-# Global IAM roles (region-independent): the per-cluster reader roles created
-# by the management cluster's ACK IAM controller (krops-<cluster>-reader, see
-# mgmt/aws/infrastructure/workload-resources/role.yaml)
-GLOBAL_IAM_ROLES="krops-eu-north-1-workload-reader krops-eu-west-1-workload-reader"
+# Global IAM roles (region-independent): the Pod Identity roles for each
+# workload cluster's platform controllers, created by the management cluster's
+# ACK IAM controller (mgmt/aws/infrastructure/<env>-pod-identity/roles.yaml)
+GLOBAL_IAM_ROLES="truehear-dev-ebs-csi truehear-dev-aws-load-balancer-controller truehear-staging-ebs-csi truehear-staging-aws-load-balancer-controller"
 
 # Global IAM users: the console reader user created by the management
 # cluster's ACK IAM controller (mgmt/aws/infrastructure/aws-global-iam/
@@ -209,27 +209,29 @@ CLUSTER_DELETE_TIMEOUT="${CLUSTER_DELETE_TIMEOUT:-1200}"
 PROVIDER_DELETE_TIMEOUT="${PROVIDER_DELETE_TIMEOUT:-300}"
 
 # ── AWS region/cluster lookup ─────────────────────────────────────────────────
-# CAPA creates the EKS cluster with dashes converted to underscores.
-# K8s Cluster name:  default-eu-north-1-workload-control-plane (dashes)
-# EKS cluster name:  default_eu-north-1-workload-control-plane (underscore)
-_get_eks_cluster() {
-  case "$1" in
-    eu-north-1) echo "default_eu-north-1-workload-control-plane" ;;
-    eu-west-1)  echo "default_eu-west-1-workload-control-plane" ;;
-    *)          return 1 ;;
-  esac
-}
+# One sweep target per workload cluster, "<region>:<env>" (one entry per
+# environment level under mgmt/aws/clusters/<region>/<env>/). The lookup
+# helpers take a target and derive every AWS-side name from it; the Rust
+# teardown reads the same list from bootstrap.toml [[aws-workloads]].
+WORKLOAD_TARGETS="eu-north-1:dev eu-north-1:staging"
+
+_target_region() { echo "${1%%:*}"; }
+_target_env()    { echo "${1#*:}"; }
 
 # CLUSTER_NAME as substituted into the workload manifests (cluster-vars
-# ConfigMap in mgmt/aws/addons/flux-apps/flux-instance.yaml). Used to derive
-# the S3 bucket name, the CAPA ownership tag, and to sweep CAPA-created IAM
-# roles by name.
+# ConfigMap in mgmt/aws/addons/flux-apps/flux-instance.yaml): the Kustomization
+# namePrefix (<region>-) + the Cluster name (<env>). Used to derive the S3
+# bucket name, the CAPA ownership tag, and to sweep CAPA-created IAM roles by
+# name.
 _get_cluster_name() {
-  case "$1" in
-    eu-north-1) echo "eu-north-1-workload" ;;
-    eu-west-1)  echo "eu-west-1-workload" ;;
-    *)          return 1 ;;
-  esac
+  echo "$(_target_region "$1")-$(_target_env "$1")"
+}
+
+# CAPA creates the EKS cluster with the namespace separator as an underscore.
+# K8s Cluster name:  default-eu-north-1-dev-control-plane (dashes)
+# EKS cluster name:  default_eu-north-1-dev-control-plane (underscore)
+_get_eks_cluster() {
+  echo "default_$(_get_cluster_name "$1")-control-plane"
 }
 
 # CAPA tags the VPC resources and EIPs it creates with
@@ -240,15 +242,11 @@ _get_capa_tag_key() {
   echo "sigs.k8s.io/cluster-api-provider-aws/cluster/$(_get_cluster_name "$1")"
 }
 
-# RDS instance identifier created by the ACK RDS controller on the management
-# cluster: krops-<cluster>-db (see
-# mgmt/aws/infrastructure/workload-resources/dbinstance.yaml).
+# RDS instance identifier the sweep would visit: krops-<cluster>-db. This repo
+# declares no RDS instance; the identifier never exists and the sweep reports
+# "not found" for it (kept so the sweep surface matches bootstrap.toml).
 _get_rds_instance() {
-  case "$1" in
-    eu-north-1) echo "krops-eu-north-1-workload-db" ;;
-    eu-west-1)  echo "krops-eu-west-1-workload-db" ;;
-    *)          return 1 ;;
-  esac
+  echo "krops-$(_get_cluster_name "$1")-db"
 }
 
 # ── AWS orphan cleanup helpers ────────────────────────────────────────────────
@@ -396,8 +394,8 @@ _cleanup_s3_bucket() {
 
 # ── VPC resources (krops only – gated on CAPA ownership tag) ─────────────────
 _cleanup_vpc_resources() {
-  _region="$1"; _cluster="$2"
-  _cluster_tag_key=$(_get_capa_tag_key "$_region")
+  _region="$1"; _cluster="$2"; _target="$3"
+  _cluster_tag_key=$(_get_capa_tag_key "$_target")
 
   for _vpc_id in $(aws ec2 describe-vpcs \
       --filter "Name=tag:${_cluster_tag_key},Values=owned" \
@@ -611,8 +609,7 @@ _cleanup_iam_role() {
 # CAPA (EKSEnableIAM=true) auto-creates per-cluster IAM roles whose exact
 # names are not declared in Git (e.g. <cluster>-iam-service-role and the
 # nodegroup roles). Sweep every role whose name starts with the cluster name –
-# that prefix ("eu-north-1-workload"/"eu-west-1-workload") is unique to this
-# repo's clusters.
+# that prefix ("eu-north-1-dev") is unique to this repo's clusters.
 _cleanup_capa_iam_roles() {
   _cluster_name="$1"
 
@@ -770,11 +767,11 @@ fi
 # behind. Each sub-step is idempotent and skips gracefully if the resource is
 # already gone.
 #
-# Sub-steps (each runs across ALL regions in $REGIONS before moving on, so
-# both regions' slow deletions overlap instead of blocking each other):
-#   4a. Nodegroups                 – delete in both regions, then wait: EKS
+# Sub-steps (each runs across ALL targets in $WORKLOAD_TARGETS before moving
+# on, so every cluster's slow deletions overlap instead of blocking each other):
+#   4a. Nodegroups                 – delete everywhere, then wait: EKS
 #                                   refuses to delete a cluster with nodegroups
-#   4b. EKS clusters               – delete in both regions, then wait: the
+#   4b. EKS clusters               – delete everywhere, then wait: the
 #                                   control plane ENIs block VPC cleanup
 #   4c. RDS instances              – ACK-created DBInstances (orphaned when the
 #                                   workload cluster dies before the CR prunes)
@@ -782,57 +779,58 @@ fi
 #                                   VPC – scoped to CAPA-tagged VPCs only
 #   4e. S3 buckets                 – ACK-created versioned data buckets
 #   4f. IAM roles + users          – CAPA per-cluster roles (prefix sweep)
-#                                   + ACK-created krops-*-reader roles
+#                                   + truehear-<env>-* Pod Identity roles
 #                                   + the krops-reader console user
-#   4g. CloudFormation stack       – clusterawsadm bootstrap stack
+#   4g. CloudFormation stack       – clusterawsadm bootstrap stack (per region)
 
 step_aws_cleanup() {
-  info "Cleaning up orphaned AWS resources in regions: $REGIONS"
+  info "Cleaning up orphaned AWS resources for targets: $WORKLOAD_TARGETS"
 
-  # ── 4a: kick off nodegroup deletion in both regions ────────────────────────
-  for _region in $REGIONS; do
-    _eks_cluster=$(_get_eks_cluster "$_region")
+  # ── 4a: kick off nodegroup deletion for every target ───────────────────────
+  for _t in $WORKLOAD_TARGETS; do
+    _region=$(_target_region "$_t")
+    _eks_cluster=$(_get_eks_cluster "$_t")
     info "  [$_region] cluster: $_eks_cluster"
 
     _cleanup_nodegroups "$_region" "$_eks_cluster"
   done
 
-  # Nodegroup deletions in both regions are now running; wait for all of them.
-  for _region in $REGIONS; do
-    _wait_nodegroups_deleted "$_region" "$(_get_eks_cluster "$_region")"
+  # Nodegroup deletions are now running everywhere; wait for all of them.
+  for _t in $WORKLOAD_TARGETS; do
+    _wait_nodegroups_deleted "$(_target_region "$_t")" "$(_get_eks_cluster "$_t")"
   done
 
-  # ── 4b: EKS clusters – delete in both regions, then wait for both ──────────
-  for _region in $REGIONS; do
-    _cleanup_eks_cluster "$_region" "$(_get_eks_cluster "$_region")"
+  # ── 4b: EKS clusters – delete everywhere, then wait for all ────────────────
+  for _t in $WORKLOAD_TARGETS; do
+    _cleanup_eks_cluster "$(_target_region "$_t")" "$(_get_eks_cluster "$_t")"
   done
-  for _region in $REGIONS; do
-    _wait_eks_cluster_deleted "$_region" "$(_get_eks_cluster "$_region")"
+  for _t in $WORKLOAD_TARGETS; do
+    _wait_eks_cluster_deleted "$(_target_region "$_t")" "$(_get_eks_cluster "$_t")"
   done
 
   # ── 4c: RDS instances (ACK-created, live in each region's default VPC) ─────
-  for _region in $REGIONS; do
-    _cleanup_rds_instance "$_region" "$(_get_rds_instance "$_region")"
+  for _t in $WORKLOAD_TARGETS; do
+    _cleanup_rds_instance "$(_target_region "$_t")" "$(_get_rds_instance "$_t")"
   done
 
   # ── 4d: VPC resources (CAPA-tagged only – krops scope) ───────────────────
-  for _region in $REGIONS; do
-    _cleanup_vpc_resources "$_region" "$(_get_cluster_name "$_region")"
+  for _t in $WORKLOAD_TARGETS; do
+    _cleanup_vpc_resources "$(_target_region "$_t")" "$(_get_cluster_name "$_t")" "$_t"
   done
 
   # ── 4e: S3 buckets (krops-${ACCOUNT_ID}-${CLUSTER_NAME}-data) ────────────
   _account_id=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || true)
   if [ -n "$_account_id" ]; then
-    for _region in $REGIONS; do
-      _cleanup_s3_bucket "krops-${_account_id}-$(_get_cluster_name "$_region")-data" "$_region"
+    for _t in $WORKLOAD_TARGETS; do
+      _cleanup_s3_bucket "krops-${_account_id}-$(_get_cluster_name "$_t")-data" "$(_target_region "$_t")"
     done
   else
     warn "  Could not determine AWS account ID – skipping S3 bucket cleanup"
   fi
 
   # ── 4f: IAM roles + users ───────────────────────────────────────────────────
-  for _region in $REGIONS; do
-    _cleanup_capa_iam_roles "$(_get_cluster_name "$_region")"
+  for _t in $WORKLOAD_TARGETS; do
+    _cleanup_capa_iam_roles "$(_get_cluster_name "$_t")"
   done
   for _role in $GLOBAL_IAM_ROLES; do
     _cleanup_iam_role "$_role"
@@ -841,7 +839,7 @@ step_aws_cleanup() {
     _cleanup_iam_user "$_user"
   done
 
-  # ── 4g: CloudFormation stack ────────────────────────────────────────────────
+  # ── 4g: CloudFormation stack (one per region) ──────────────────────────────
   for _region in $REGIONS; do
     _cleanup_cfn_stack "$_region" "$CFN_STACK_NAME"
   done

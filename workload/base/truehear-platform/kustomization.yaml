@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Namespaces and ServiceAccounts for the TrueHear platform services (Vault,
+# Redis, RabbitMQ, backend). The HelmReleases that run Vault, Redis and
+# RabbitMQ live in workload/environments/<env>/ and depend on these objects.
+resources:
+  - services/backend/base
+  - services/rabbitmq/base
+  - services/redis/base
+  - services/vault/base

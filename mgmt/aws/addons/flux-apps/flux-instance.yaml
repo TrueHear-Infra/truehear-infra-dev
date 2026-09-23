@@ -1,24 +1,25 @@
 ---
 # ══════════════════════════════════════════════════════════════════════════════
-# Per-cluster FluxInstance ConfigMaps, applied to each workload cluster by the
-# ClusterResourceSets below.
+# Per-environment FluxInstance ConfigMaps, applied to each TrueHear workload
+# cluster by the ClusterResourceSets below (selector: fluxcd=enabled,
+# environment=<env>). One ConfigMap and one ClusterResourceSet per
+# environment level (dev, staging; prod when it exists).
 #
-# Each workload cluster runs its own Flux instance syncing the workload/ overlay
-# for its region (workload/eu-north-01, workload/eu-west-01). Those overlays pull
-# in workload/base, which is an intentionally empty overlay since issue #346:
-# the ACK controllers and the Bucket / DBInstance / reader Role CRs moved to
-# the management cluster (mgmt/aws/infrastructure/workload-resources/). The
-# workload Flux instance reconciles nothing today but is ready for a future
-# application workload (the local-host Podinfo pattern).
-#
-# Each ConfigMap also ships a `cluster-vars` ConfigMap into flux-system on the
-# workload cluster, kept as the per-cluster substitution channel (region,
-# cluster name, account ID) for that future workload's Flux Kustomizations.
+# Each workload cluster runs its own Flux instance syncing its sync root
+# workload/eu-north-1-<env>. That root composes workload/platform (ALB
+# controller, StorageClass), workload/base (environment-neutral roots and
+# charts) and workload/environments/<env> (the overlay). The cluster-vars
+# ConfigMap is the per-cluster substitution channel (postBuild.substituteFrom)
+# for values the overlays cannot know statically: region, cluster name, EKS
+# name, account ID, environment, VPC ID (the ALB controller cannot use IMDS
+# with hop limit 1) and the ACM certificate ARN for the Keycloak Ingress.
+# VPC_ID and the ACM ARN are committed after the first bootstrap; see
+# docs/aws.md "Commit the identifiers".
 # ══════════════════════════════════════════════════════════════════════════════
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: flux-instance-eu-north-1
+  name: flux-instance-dev
   namespace: default
 data:
   flux-instance.yaml: |
@@ -34,8 +35,13 @@ data:
       namespace: flux-system
     data:
       AWS_REGION: "eu-north-1"
-      CLUSTER_NAME: "eu-north-1-workload"
-      AWS_ACCOUNT_ID: "120392301094"
+      CLUSTER_NAME: "eu-north-1-dev"
+      EKS_CLUSTER_NAME: "default_eu-north-1-dev-control-plane"
+      AWS_ACCOUNT_ID: "974771261200"
+      ENVIRONMENT: "dev"
+      VPC_ID: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+      KEYCLOAK_HOSTNAME: "auth.dev.truehearkiosk.com"
+      KEYCLOAK_ACM_CERTIFICATE_ARN: "REPLACE_WITH_ACM_CERT_ARN"
     ---
     apiVersion: fluxcd.controlplane.io/v1
     kind: FluxInstance
@@ -63,15 +69,15 @@ data:
         domain: "cluster.local"
       sync:
         kind: GitRepository
-        url: "https://github.com/polarsquad/krops"
+        url: "https://github.com/TrueHear-Infra/truehear-infra-dev"
         ref: "refs/heads/main"
-        path: "workload/eu-north-01"
+        path: "workload/eu-north-1-dev"
         pullSecret: "flux-github-pat"
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: flux-instance-eu-west-1
+  name: flux-instance-staging
   namespace: default
 data:
   flux-instance.yaml: |
@@ -86,9 +92,14 @@ data:
       name: cluster-vars
       namespace: flux-system
     data:
-      AWS_REGION: "eu-west-1"
-      CLUSTER_NAME: "eu-west-1-workload"
-      AWS_ACCOUNT_ID: "120392301094"
+      AWS_REGION: "eu-north-1"
+      CLUSTER_NAME: "eu-north-1-staging"
+      EKS_CLUSTER_NAME: "default_eu-north-1-staging-control-plane"
+      AWS_ACCOUNT_ID: "974771261200"
+      ENVIRONMENT: "staging"
+      VPC_ID: "REPLACE_AFTER_FIRST_BOOTSTRAP"
+      KEYCLOAK_HOSTNAME: "auth.staging.truehearkiosk.com"
+      KEYCLOAK_ACM_CERTIFICATE_ARN: "REPLACE_WITH_ACM_CERT_ARN"
     ---
     apiVersion: fluxcd.controlplane.io/v1
     kind: FluxInstance
@@ -116,46 +127,53 @@ data:
         domain: "cluster.local"
       sync:
         kind: GitRepository
-        url: "https://github.com/polarsquad/krops"
+        url: "https://github.com/TrueHear-Infra/truehear-infra-dev"
         ref: "refs/heads/main"
-        path: "workload/eu-west-01"
+        path: "workload/eu-north-1-staging"
         pullSecret: "flux-github-pat"
 ---
 # ══════════════════════════════════════════════════════════════════════════════
-# ClusterResourceSets: apply the per-region FluxInstance ConfigMap and the
-# GitHub PAT pull secret (flux-pull-secret.sops.yaml, SOPS-encrypted) to each
-# workload cluster, selected by the `region` label on the Cluster resource.
+# ClusterResourceSets: apply the environment's FluxInstance ConfigMap, the
+# GitHub PAT pull secret (flux-pull-secret.sops.yaml, SOPS-encrypted) and the
+# age key (sops-age-resource-set, created by krops-bootstrap in the mgmt
+# namespace; see docs/secrets.md) to the workload cluster whose Cluster
+# carries the matching `environment` label. ApplyOnce: a rotated PAT or age
+# key needs a manual re-apply on the workload cluster.
 # ══════════════════════════════════════════════════════════════════════════════
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
 metadata:
-  name: flux-instance-eu-north-1
+  name: flux-instance-dev
   namespace: default
 spec:
   clusterSelector:
     matchLabels:
       fluxcd: enabled
-      region: eu-north-1
+      environment: dev
   strategy: ApplyOnce
   resources:
     - kind: ConfigMap
-      name: flux-instance-eu-north-1
+      name: flux-instance-dev
     - kind: Secret
       name: flux-pull-secret
+    - kind: Secret
+      name: sops-age-resource-set
 ---
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
 metadata:
-  name: flux-instance-eu-west-1
+  name: flux-instance-staging
   namespace: default
 spec:
   clusterSelector:
     matchLabels:
       fluxcd: enabled
-      region: eu-west-1
+      environment: staging
   strategy: ApplyOnce
   resources:
     - kind: ConfigMap
-      name: flux-instance-eu-west-1
+      name: flux-instance-staging
     - kind: Secret
       name: flux-pull-secret
+    - kind: Secret
+      name: sops-age-resource-set

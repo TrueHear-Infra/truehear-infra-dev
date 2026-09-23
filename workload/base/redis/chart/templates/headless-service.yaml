@@ -1,0 +1,26 @@
+{{- $name := include "truehear-redis.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "truehear-redis.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: truehear-platform
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "truehear-redis.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: redis-tls
+      port: {{ .Values.service.redisPort }}
+      targetPort: redis-tls
+      protocol: TCP
+    - name: cluster-bus
+      port: {{ .Values.service.clusterBusPort }}
+      targetPort: cluster-bus
+      protocol: TCP

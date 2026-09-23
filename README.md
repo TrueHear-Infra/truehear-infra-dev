@@ -163,7 +163,7 @@ layers its own tools and tasks in a `mise.<env>.toml`.
 
 | Environment | Management cluster | CAPI provider | Workload operator | Config sync |
 |---|---|---|---|---|
-| `aws` | EKS `eu-north-1-management` | CAPA | ACK (S3, RDS, IAM) | GitHub |
+| `aws` | EKS `eu-north-1-management` | CAPA | ACK (IAM, EKS) | GitHub |
 | `azure` | AKS `swedencentral-management` | CAPZ (bundles ASO) | Azure Service Operator | GitHub |
 | `gcp` | GKE `europe-north1-management` | CAPG | Config Connector | GitHub |
 | `local-host` | CAPD `local-management` (Docker) | CAPD | Flux + Podinfo | local OCI registry |
@@ -175,10 +175,11 @@ link to the full guide.
 #### AWS
 
 The reference environment. CAPA provisions an EKS management cluster in
-`eu-north-1` plus workload EKS clusters in `eu-north-1` and `eu-west-1`; the
-management cluster runs the ACK S3, RDS, and IAM operators reconciling the
-per-cluster AWS resources, so workload clusters hold no credentials and run
-no controllers. Credentials are a
+`eu-north-1` plus the `eu-north-1-dev` and `eu-north-1-staging` workload EKS
+clusters; the management cluster runs the ACK IAM and EKS operators creating
+the per-environment Pod Identity roles and associations, so workload clusters
+hold no credentials and run no controllers (and there are no S3 buckets or
+RDS instances in the account). Credentials are a
 SOPS-encrypted CAPA profile in Git (the same static pattern authenticates
 the ACK controllers). It needs a GitHub PAT, an age key,
 AWS credentials, and the `clusterawsadm` CloudFormation stack.
@@ -201,9 +202,10 @@ scripts/toolbox-run.sh teardown aws    # full AWS + EKS + kind cleanup
 ```
 
 Full guide: [AWS environment](docs/aws.md) (clusters, credentials, commit the
-identifiers, reconciliation order, upgrades, known limitations). IAM and
-per-cluster reader roles: [AWS authentication & IAM](docs/aws-iam.md). S3/RDS
-posture: [Workload resources](docs/workload-resources.md).
+identifiers, reconciliation order, upgrades, known limitations). IAM and the
+per-environment Pod Identity roles: [AWS authentication & IAM](docs/aws-iam.md).
+TrueHear environment levels and operator steps:
+[TrueHear environments](docs/truehear-environments.md).
 
 #### Azure
 
@@ -368,11 +370,12 @@ teardown controls, toolbox release, and current parity status.
 | [docs/dependencies.md](docs/dependencies.md) | Renovate-managed dependency updates: covered surfaces, update procedure, intentional differences |
 | [docs/architecture.md](docs/architecture.md) | Architecture diagram, reconciliation order, how workload apps are delivered |
 | [docs/aws.md](docs/aws.md) | AWS environment: clusters, credentials, identifiers, reconciliation order, upgrades, known limitations |
+| [docs/truehear-environments.md](docs/truehear-environments.md) | TrueHear environment levels (dev, staging, prod): layering, environment matrix, sizing, adding an environment, post-bootstrap operator steps |
 | [docs/wiremock-e2e-spike-findings-aws.md](docs/wiremock-e2e-spike-findings-aws.md) | WireMock e2e Phase 0 spike findings (AWS): CAPA/ACK honor `AWS_ENDPOINT_URL`, no network-layer interception needed |
 | [docs/wiremock-e2e-spike-findings-azure.md](docs/wiremock-e2e-spike-findings-azure.md) | WireMock e2e Phase 0 spike findings (Azure): ASO honors endpoint settings, CAPZ needs the CoreDNS rewrite, `HTTPS_PROXY` is not viable |
 | [docs/wiremock-e2e-spike-findings-gcp.md](docs/wiremock-e2e-spike-findings-gcp.md) | WireMock e2e Phase 0 spike findings (GCP): REST and gRPC both interceptable via CoreDNS rewrite + SAN certs; HTTPS_PROXY covers REST only; CAPG v1.13.1 `serviceEndpoints` covers REST compute only |
-| [docs/aws-iam.md](docs/aws-iam.md) | Management-cluster ACK controllers (static SOPS credentials, union scope), per-cluster reader roles, the `krops-reader` console user |
-| [docs/workload-resources.md](docs/workload-resources.md) | S3 bucket security posture, RDS instances, known limitations |
+| [docs/aws-iam.md](docs/aws-iam.md) | Management-cluster ACK controllers (static SOPS credentials, union scope), the per-environment Pod Identity roles, the `krops-reader` console user |
+| [docs/workload-resources.md](docs/workload-resources.md) | Workload-cluster cloud resources: AWS (none, retired), GCP (bucket, Cloud SQL, reader identity) |
 | [docs/konflate.md](docs/konflate.md) | Rendered Flux PR review: GitHub Actions gate, in-cluster instance, write-back to PRs, tokens |
 | [docs/secrets.md](docs/secrets.md) | SOPS + age secret management, key setup, credential rotation |
 | [docs/operations.md](docs/operations.md) | Toolbox runtime, prerequisites, quotas, bootstrap, pivot recovery, teardown, validation |
@@ -412,17 +415,18 @@ teardown controls, toolbox release, and current parity status.
 ├── renovate.json5                 Hosted Renovate discovery and grouping rules
 ├── mgmt/aws/                      Synced by the MANAGEMENT cluster's Flux
 │   ├── infrastructure/           cert-manager, CAPI operator, CAPA identity,
-│   │                              ACK controllers (S3, RDS, IAM) and the
-│   │                              per-cluster Bucket/DBInstance/reader Role
-│   │                              CRs, account-global IAM (reader console
+│   │                              ACK controllers (IAM, EKS) and the
+│   │                              per-environment Pod Identity roles,
+│   │                              policies and associations (dev, staging),
+│   │                              account-global IAM (reader console
 │   │                              user), konflate (rendered Flux PR review)
 │   ├── capi-providers/           capi-system, capa-system (SOPS creds),
 │   │                              caaph-system
 │   ├── addons/flux-apps/         Installs Flux on each workload cluster
-│   │                              (HelmChartProxy + ClusterResourceSets)
-│   └── clusters/                 EKS cluster defs: eu-north-1, eu-west-1
-│                                  (ARM + GPU MachinePools); eu-north-1 also
-│                                  carries the self-managed management cluster
+│   │                              (HelmChartProxy + per-env ClusterResourceSets)
+│   └── clusters/                 EKS cluster defs: eu-north-1 (management,
+│                                  dev, staging); the self-managed management
+│                                  cluster definition lives in eu-north-1 too
 ├── mgmt/local-host/              OCI-synced CAPI/CAPD local workload cluster
 │   │                              and its management cluster definition
 │   ├── infrastructure/           capi-operator, cert-manager
@@ -440,17 +444,21 @@ teardown controls, toolbox release, and current parity status.
 ├── mgmt/gcp/                      GKE management cluster (CAPG + Config
 │   │                              Connector operator + WIF identities)
 └── workload/                     Synced by each WORKLOAD cluster's Flux
-    ├── base/                     Intentionally empty since #346 (ACK moved
-    │                              to the management cluster); ready for a
-    │                              future application workload
+    ├── base/                     TrueHear service roots and vendored charts
+    │                              (keycloak, truehear-platform, redis/chart,
+    │                              rabbitmq/chart, vault); never edited in place
+    ├── platform/                 StorageClass + ALB controller HelmRelease
+    ├── environments/             One overlay per environment level:
+    │   ├── dev/                  (placeholder)
+    │   ├── staging/              full stack overlay
+    │   └── prod/                 (placeholder)
+    ├── eu-north-1-staging/       TrueHear sync root (staging)
     ├── azure-base/               cert-manager, ASO, and the Azure workload
     │                              resources (VNet, storage, PostgreSQL)
     ├── gcp-base/                 KCC operator + ConfigConnector, PSA range,
     │                              storage bucket, Cloud SQL, per-cluster
     │                              reader GSA
     ├── local-host/               OCI-synced Podinfo workload overlay
-    ├── eu-north-01/              Per-cluster overlay (sync target)
-    ├── eu-west-01/               Per-cluster overlay (sync target)
     ├── swedencentral-01/         Per-cluster overlay -> azure-base
     └── europe-north1-01/         Per-cluster overlay -> gcp-base
 ```

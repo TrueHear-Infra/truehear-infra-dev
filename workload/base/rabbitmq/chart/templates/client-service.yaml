@@ -1,0 +1,21 @@
+{{- $name := include "truehear-rabbitmq.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "truehear-rabbitmq.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: truehear-platform
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "truehear-rabbitmq.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: amqps
+      port: {{ .Values.service.amqpsPort }}
+      targetPort: amqps
+    - name: management-tls
+      port: {{ .Values.service.managementTlsPort }}
+      targetPort: management-tls

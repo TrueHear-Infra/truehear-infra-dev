@@ -68,7 +68,7 @@
   <rect x="620" y="150" width="400" height="330" rx="14" fill="#131E18" stroke="#284637" stroke-width="1.5"/>
   <rect x="636" y="158" width="368" height="5" rx="2.5" fill="#B0F6C0"/>
   <text x="820" y="198" text-anchor="middle" font-family="DejaVu Sans" font-size="25" font-weight="bold" fill="#B0F6C0">Git Repository</text>
-  <text x="820" y="222" text-anchor="middle" font-family="DejaVu Sans" font-size="16" fill="#859D91">(polarsquad/krops)</text>
+  <text x="820" y="222" text-anchor="middle" font-family="DejaVu Sans" font-size="16" fill="#859D91">(TrueHear-Infra/truehear-infra-dev)</text>
   <!-- folder tree -->
   <g fill="none" stroke-width="1.7">
     <path d="M660,250 h9 l4,5 h15 v16 h-28 z" stroke="#5CE0B4"/>
@@ -83,8 +83,8 @@
   <text x="700" y="268" font-family="DejaVu Sans Mono" font-size="17" font-weight="bold" fill="#5CE0B4">mgmt/</text>
   <text x="700" y="306" font-family="DejaVu Sans Mono" font-size="17" font-weight="bold" fill="#68C5EB">workload/</text>
   <text x="744" y="342" font-family="DejaVu Sans Mono" font-size="16" fill="#68C5EB">base/</text>
-  <text x="744" y="376" font-family="DejaVu Sans Mono" font-size="16" fill="#68C5EB">eu-north-01/</text>
-  <text x="744" y="410" font-family="DejaVu Sans Mono" font-size="16" fill="#68C5EB">eu-west-01/</text>
+  <text x="744" y="376" font-family="DejaVu Sans Mono" font-size="16" fill="#68C5EB">eu-north-1-dev/</text>
+  <text x="744" y="410" font-family="DejaVu Sans Mono" font-size="16" fill="#68C5EB">eu-north-1-staging/</text>
   <text x="820" y="442" text-anchor="middle" font-family="DejaVu Sans" font-size="14.5" fill="#859D91">Flux tracks <tspan font-family="DejaVu Sans Mono" fill="#D4E2DA">main</tspan></text>
   <text x="820" y="464" text-anchor="middle" font-family="DejaVu Sans" font-size="14.5" fill="#859D91">SOPS-encrypted secrets in-repo</text>
 
@@ -93,7 +93,7 @@
     <rect x="64" y="600" width="430" height="330" rx="14" fill="#131E18" stroke="#284637" stroke-width="1.5"/>
     <rect x="80" y="608" width="398" height="5" rx="2.5" fill="#68C5EB"/>
     <text x="279" y="648" text-anchor="middle" font-family="DejaVu Sans" font-size="25" font-weight="bold" fill="#68C5EB">Workload Cluster</text>
-    <text x="279" y="672" text-anchor="middle" font-family="DejaVu Sans" font-size="16" fill="#D4E2DA">eu-north-1 (EKS)</text>
+    <text x="279" y="672" text-anchor="middle" font-family="DejaVu Sans" font-size="16" fill="#D4E2DA">eu-north-1-dev (EKS)</text>
     <g transform="translate(120,712) scale(0.85)">
       <path d="M0,-18 L15,0 L0,18 L-15,0 Z" fill="#68C5EB"/>
       <line x1="0" y1="-18" x2="0" y2="18" stroke="#131E18" stroke-width="2.5"/>
@@ -104,7 +104,7 @@
     <text x="156" y="731" font-family="DejaVu Sans" font-size="13" fill="#859D91">(local)</text>
     <rect x="218" y="680" width="254" height="62" rx="8" fill="#1B2C23" stroke="#68C5EB" stroke-opacity="0.6" stroke-width="1.2"/>
     <text x="345" y="703" text-anchor="middle" font-family="DejaVu Sans" font-size="12.5" fill="#D4E2DA">syncs</text>
-    <text x="345" y="726" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="16" fill="#68C5EB">workload/eu-north-01/</text>
+    <text x="345" y="726" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="16" fill="#68C5EB">workload/eu-north-1-dev/</text>
   </g>
 
   <!-- ===== workload cluster 2 ===== -->
@@ -112,7 +112,7 @@
     <rect x="600" y="600" width="430" height="330" rx="14" fill="#131E18" stroke="#284637" stroke-width="1.5"/>
     <rect x="616" y="608" width="398" height="5" rx="2.5" fill="#68C5EB"/>
     <text x="815" y="648" text-anchor="middle" font-family="DejaVu Sans" font-size="25" font-weight="bold" fill="#68C5EB">Workload Cluster</text>
-    <text x="815" y="672" text-anchor="middle" font-family="DejaVu Sans" font-size="16" fill="#D4E2DA">eu-west-1 (EKS)</text>
+    <text x="815" y="672" text-anchor="middle" font-family="DejaVu Sans" font-size="16" fill="#D4E2DA">eu-north-1-staging (EKS)</text>
     <g transform="translate(656,712) scale(0.85)">
       <path d="M0,-18 L15,0 L0,18 L-15,0 Z" fill="#68C5EB"/>
       <line x1="0" y1="-18" x2="0" y2="18" stroke="#131E18" stroke-width="2.5"/>
@@ -123,7 +123,7 @@
     <text x="692" y="731" font-family="DejaVu Sans" font-size="13" fill="#859D91">(local)</text>
     <rect x="754" y="680" width="254" height="62" rx="8" fill="#1B2C23" stroke="#68C5EB" stroke-opacity="0.6" stroke-width="1.2"/>
     <text x="881" y="703" text-anchor="middle" font-family="DejaVu Sans" font-size="12.5" fill="#D4E2DA">syncs</text>
-    <text x="881" y="726" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="16" fill="#68C5EB">workload/eu-west-01/</text>
+    <text x="881" y="726" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="16" fill="#68C5EB">workload/eu-north-1-staging/</text>
   </g>
 
   <!-- pipelines (both clusters) -->
@@ -151,10 +151,10 @@
       <circle cx="405" cy="783" r="6.5"/>
       <path d="M393,808 a12,12 0 0 1 24,0"/>
     </g>
-    <text x="130" y="844" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="14" fill="#D4E2DA">aws-operators</text>
-    <text x="215" y="870" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="14" fill="#D4E2DA">s3-buckets</text>
-    <text x="310" y="844" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="14" fill="#D4E2DA">rds-instances</text>
-    <text x="405" y="870" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="14" fill="#D4E2DA">iam-roles</text>
+    <text x="130" y="844" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="14" fill="#D4E2DA">platform</text>
+    <text x="215" y="870" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="14" fill="#D4E2DA">truehear-platform</text>
+    <text x="310" y="844" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="14" fill="#D4E2DA">keycloak &#183; vault</text>
+    <text x="405" y="870" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="14" fill="#D4E2DA">redis &#183; rabbitmq</text>
   </g>
   <use href="#pipe1" x="536" y="0"/>
 
@@ -224,10 +224,10 @@
   <circle cx="1140" cy="628" r="15" fill="#68C5EB"/>
   <text x="1140" y="634" text-anchor="middle" font-family="DejaVu Sans" font-size="15" font-weight="bold" fill="#0C120F">3</text>
   <text x="1168" y="624" font-family="DejaVu Sans" font-size="17" fill="#D4E2DA">Workload Flux reconciles locally:</text>
-  <text x="1168" y="660" font-family="DejaVu Sans Mono" font-size="18" fill="#D4E2DA">1. <tspan fill="#FFFFFF">aws-operators</tspan> <tspan font-family="DejaVu Sans" fill="#859D91">(ACK)</tspan></text>
-  <text x="1168" y="692" font-family="DejaVu Sans Mono" font-size="18" fill="#D4E2DA">2. <tspan fill="#FFFFFF">s3-buckets &#183; rds-instances</tspan></text>
-  <text x="1200" y="724" font-family="DejaVu Sans Mono" font-size="18" fill="#FFFFFF">&#183; iam-roles <tspan font-family="DejaVu Sans" fill="#D4E2DA">in parallel</tspan></text>
-  <text x="1168" y="754" font-family="DejaVu Sans Mono" font-size="14.5" fill="#859D91">(each dependsOn: aws-operators)</text>
+  <text x="1168" y="660" font-family="DejaVu Sans Mono" font-size="18" fill="#D4E2DA">1. <tspan fill="#FFFFFF">platform &#183; truehear-platform</tspan></text>
+  <text x="1168" y="692" font-family="DejaVu Sans Mono" font-size="18" fill="#D4E2DA">2. <tspan fill="#FFFFFF">keycloak &#183; vault</tspan></text>
+  <text x="1200" y="724" font-family="DejaVu Sans Mono" font-size="18" fill="#FFFFFF">&#183; redis &#183; rabbitmq</text>
+  <text x="1168" y="754" font-family="DejaVu Sans Mono" font-size="14.5" fill="#859D91">(each dependsOn: truehear-platform)</text>
   <line x1="1122" y1="788" x2="1504" y2="788" stroke="#1F362A" stroke-width="1.2"/>
 
   <!-- golden rule -->

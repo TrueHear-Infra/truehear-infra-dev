@@ -1,0 +1,45 @@
+---
+# ══════════════════════════════════════════════════════════════════════════════
+# EKS Pod Identity associations for the dev cluster, reconciled by the ACK
+# EKS controller on the management cluster. clusterName is the EKS name CAPA
+# gives the cluster: <namespace>_<AWSManagedControlPlane name>. Each stays
+# not-Ready until the dev control plane is ACTIVE and the
+# eks-pod-identity-agent add-on is installed (both declared in
+# mgmt/aws/clusters/eu-north-1/dev/cluster.yaml); Flux reconciles this
+# Kustomization with wait: false so the delay is not an error.
+#
+# ServiceAccount names are fixed by the consumers: ebs-csi-controller-sa is
+# the aws-ebs-csi-driver EKS add-on default; aws-load-balancer-controller is
+# the chart's default fullname (workload/platform/aws-load-balancer-controller).
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: eks.services.k8s.aws/v1alpha1
+kind: PodIdentityAssociation
+metadata:
+  name: truehear-dev-ebs-csi
+  namespace: ack-system
+spec:
+  clusterName: default_eu-north-1-dev-control-plane
+  namespace: kube-system
+  serviceAccount: ebs-csi-controller-sa
+  roleRef:
+    from:
+      name: truehear-dev-ebs-csi
+  tags:
+    managed-by: flux-ack
+    truehear.io/environment: dev
+---
+apiVersion: eks.services.k8s.aws/v1alpha1
+kind: PodIdentityAssociation
+metadata:
+  name: truehear-dev-aws-load-balancer-controller
+  namespace: ack-system
+spec:
+  clusterName: default_eu-north-1-dev-control-plane
+  namespace: kube-system
+  serviceAccount: aws-load-balancer-controller
+  roleRef:
+    from:
+      name: truehear-dev-aws-load-balancer-controller
+  tags:
+    managed-by: flux-ack
+    truehear.io/environment: dev

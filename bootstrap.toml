@@ -22,6 +22,10 @@ registry-name = "krops-registry"
 flux-namespace = "flux-system"
 github-pat-secret = "flux-github-pat"
 sops-age-secret = "sops-age"
+# CRS-shaped wrapper of the same key in mgmt-namespace: the flux-apps
+# ClusterResourceSet applies it to every workload cluster so their Flux
+# can decrypt workload/**/*.sops.yaml.
+sops-age-resource-set = "sops-age-resource-set"
 mgmt-namespace = "default"
 mgmt-context = "krops-mgmt"
 
@@ -45,18 +49,20 @@ capi-operator = "0.28.0"
 # against the Git manifests that define the same names.
 # CloudFormation stack created by `clusterawsadm bootstrap iam`.
 cfn-stack-name = "cluster-api-provider-aws-sigs-k8s-io"
-# Region-independent IAM roles: the per-cluster reader roles created by the
-# management cluster's ACK IAM controller
-# (mgmt/aws/infrastructure/workload-resources/role.yaml).
+# Region-independent IAM roles: the Pod Identity roles for each workload
+# cluster's platform controllers, created by the management cluster's ACK IAM
+# controller (mgmt/aws/infrastructure/<env>-pod-identity/roles.yaml).
 global-iam-roles = [
-  "krops-eu-north-1-workload-reader",
-  "krops-eu-west-1-workload-reader",
+  "truehear-dev-ebs-csi",
+  "truehear-dev-aws-load-balancer-controller",
+  "truehear-staging-ebs-csi",
+  "truehear-staging-aws-load-balancer-controller",
 ]
 # The console reader user created by the management cluster's ACK IAM
 # controller (mgmt/aws/infrastructure/aws-global-iam/reader-user.yaml).
 global-iam-users = ["krops-reader"]
-# S3 bucket pattern (mgmt/aws/infrastructure/workload-resources/bucket.yaml).
-s3-bucket-pattern = "krops-{account_id}-{cluster_name}-data"
+# No S3 buckets are declared by this repository (the krops Bucket example was
+# removed); the sweep unit skips S3 when the pattern is absent.
 
 [environments.local-host]
 kind = "local-host"
@@ -116,20 +122,24 @@ manifest = "mgmt/aws/infrastructure/aws-identity/identity.yaml"
 # itself kills the CAPA controller mid-delete. Its names join the sweep.
 mgmt-eks-cluster-name = "default_eu-north-1-management-control-plane"
 mgmt-iam-role-prefix = "eu-north-1-management"
-# Workload clusters the orphan sweep visits (order: file order = sweep
-# order). Names mirror the Kustomization namePrefixes and the cluster-vars
-# substitutions in mgmt/aws/addons/flux-apps/flux-instance.yaml.
+# Workload clusters the orphan sweep visits, one entry per environment level.
+# Names mirror the Kustomization namePrefix + Cluster name in
+# mgmt/aws/clusters/eu-north-1/<env>/ and the cluster-vars substitutions in
+# mgmt/aws/addons/flux-apps/flux-instance.yaml.
+# rds-instance is a required field of the sweep target; this repo declares no
+# RDS instance, so the value names an identifier that never exists and the
+# sweep reports "not found" for it.
 [[environments.aws.teardown.aws-workloads]]
 region = "eu-north-1"
-cluster-name = "eu-north-1-workload"
-eks-cluster-name = "default_eu-north-1-workload-control-plane"
-rds-instance = "krops-eu-north-1-workload-db"
+cluster-name = "eu-north-1-dev"
+eks-cluster-name = "default_eu-north-1-dev-control-plane"
+rds-instance = "krops-eu-north-1-dev-db"
 
 [[environments.aws.teardown.aws-workloads]]
-region = "eu-west-1"
-cluster-name = "eu-west-1-workload"
-eks-cluster-name = "default_eu-west-1-workload-control-plane"
-rds-instance = "krops-eu-west-1-workload-db"
+region = "eu-north-1"
+cluster-name = "eu-north-1-staging"
+eks-cluster-name = "default_eu-north-1-staging-control-plane"
+rds-instance = "krops-eu-north-1-staging-db"
 
 [environments.local-talos]
 kind = "local-talos"

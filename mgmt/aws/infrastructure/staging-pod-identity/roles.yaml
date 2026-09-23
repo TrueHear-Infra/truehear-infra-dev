@@ -1,0 +1,76 @@
+---
+# ══════════════════════════════════════════════════════════════════════════════
+# IAM roles for the staging cluster's platform controllers, assumed through EKS
+# Pod Identity (trust: pods.eks.amazonaws.com; the association in
+# associations.yaml binds each role to one ServiceAccount). Reconciled by
+# the ACK IAM controller on the MANAGEMENT cluster, so the staging cluster holds
+# no credentials at rest. Names are the teardown sweep list in bootstrap.toml
+# [teardown].global-iam-roles (tests/test-bootstrap-config.py cross-checks).
+#
+# services.k8s.aws/adoption-policy: adopt-or-create — applied twice per
+# bootstrap (kind, then the pivoted management cluster).
+#
+# EBS managed policy ARN (verified 2026-09-22 via read-only
+# `aws iam get-policy --policy-arn ... --query Policy.PolicyName --output text`):
+#   arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy -> AmazonEBSCSIDriverPolicy
+#   arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicyV2 -> AmazonEBSCSIDriverPolicyV2
+# V2 exists, so it is used here (preferred per plan).
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: iam.services.k8s.aws/v1alpha1
+kind: Role
+metadata:
+  name: truehear-staging-ebs-csi
+  namespace: ack-system
+  annotations:
+    services.k8s.aws/adoption-policy: adopt-or-create
+spec:
+  name: truehear-staging-ebs-csi
+  description: "EBS CSI driver on the TrueHear staging cluster (EKS Pod Identity)"
+  assumeRolePolicyDocument: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": { "Service": "pods.eks.amazonaws.com" },
+          "Action": ["sts:AssumeRole", "sts:TagSession"]
+        }
+      ]
+    }
+  policies:
+    - arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicyV2
+  tags:
+    - key: managed-by
+      value: flux-ack
+    - key: truehear.io/environment
+      value: staging
+---
+apiVersion: iam.services.k8s.aws/v1alpha1
+kind: Role
+metadata:
+  name: truehear-staging-aws-load-balancer-controller
+  namespace: ack-system
+  annotations:
+    services.k8s.aws/adoption-policy: adopt-or-create
+spec:
+  name: truehear-staging-aws-load-balancer-controller
+  description: "AWS Load Balancer Controller on the TrueHear staging cluster (EKS Pod Identity)"
+  assumeRolePolicyDocument: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": { "Service": "pods.eks.amazonaws.com" },
+          "Action": ["sts:AssumeRole", "sts:TagSession"]
+        }
+      ]
+    }
+  policyRefs:
+    - from:
+        name: truehear-staging-aws-load-balancer-controller
+  tags:
+    - key: managed-by
+      value: flux-ack
+    - key: truehear.io/environment
+      value: staging

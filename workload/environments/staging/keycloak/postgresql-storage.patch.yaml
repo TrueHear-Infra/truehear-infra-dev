@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: keycloak-postgresql
+  namespace: keycloak
+spec:
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: keycloak-postgresql
+          app.kubernetes.io/component: database
+          app.kubernetes.io/part-of: truehear-platform
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: truehear-encrypted-gp3
+        resources:
+          requests:
+            storage: 5Gi

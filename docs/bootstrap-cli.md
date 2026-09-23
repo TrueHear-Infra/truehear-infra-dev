@@ -93,6 +93,10 @@ teardown names against the Git manifests. Renovate updates the annotated chart
 pins together with their declarative counterparts. See
 [Dependencies](./dependencies.md).
 
+- `sops-age-resource-set` (`[bootstrap]`): name of the ClusterResourceSet
+  payload Secret carrying the workload clusters' `sops-age`. The bootstrap
+  plants it in the management namespace so every workload cluster's Flux can
+  decrypt `workload/**/*.sops.yaml` before reconciling.
 - `pivot-sops-secrets` (optional, list): SOPS-encrypted manifests the pivot
   decrypts with `SOPS_AGE_KEY_FILE` (defaults to `AGE_KEY_FILE`) and applies to
   the target before `clusterctl move`. Used by `azure` for the ASO/CAPZ
@@ -125,7 +129,7 @@ pins together with their declarative counterparts. See
 | `GIT_REPO_URL` | required for `aws` and `local-talos` | Management Flux Git source |
 | `GITHUB_TOKEN` | required for `aws` and `local-talos` | PAT with read access to the repository |
 | `GITHUB_USER` | `git` | Basic-auth username paired with the PAT |
-| `AGE_KEY_FILE` | `age.agekey` | SOPS age private key loaded into `sops-age` |
+| `AGE_KEY_FILE` | `age.agekey` | SOPS age private key; required for all environments (generated with `mise run sops-keygen` when absent); loaded into `sops-age` and `sops-age-resource-set` |
 | `AGE_PUBLIC_KEY` | derived from `AGE_KEY_FILE` | Public key override during secret creation; must match the key file's public key when both are known (preflight fails fast on a mismatch) |
 | `OCI_REPOSITORY` / `OCI_TAG` | `krops` / `latest` | Local-host OCI artifact name |
 | `BOOTSTRAP_PIVOT` | `1` | Any value other than literal `1` skips pivot |
@@ -247,12 +251,15 @@ management cluster to be removed.
   keeps running Talos for the operator. `AWS_ONLY=1` is rejected because
   there is no AWS orphan sweep for operator-owned hardware.
 - `aws`: suspend Flux, delete and wait for workload CAPI clusters, run the AWS
-  orphan sweep for both workloads and the self-managed management cluster,
-  remove CAPI providers and bootstrap Helm releases when the controller host is
-  still reachable, and enforce the controller-host deletion guard. The sweep
-  covers nodegroups, EKS clusters, RDS, CAPA-tagged
-  VPC resources, versioned S3 buckets, IAM roles and users, and the
-  `clusterawsadm` CloudFormation stack.
+  orphan sweep per environment-level target (dev and staging) plus the
+  self-managed management cluster, remove CAPI providers and bootstrap Helm
+  releases when the controller host is still reachable, and enforce the
+  controller-host deletion guard. The sweep covers nodegroups, EKS clusters,
+  CAPA-tagged VPC resources, the CAPA per-cluster IAM roles, the
+  `truehear-<env>-*` Pod Identity roles, the `krops-reader` user, and the
+  `clusterawsadm` CloudFormation stack. The customer-managed ALB `Policy`
+  resources are not deleted and must be removed manually; there is no S3/RDS
+  sweep (the repo declares none).
 
 `AWS_ONLY=1` is the recovery path when only AWS cleanup remains. A missing tool
 fails preflight before mutation; in the normal AWS path, a missing AWS CLI is

@@ -5,8 +5,8 @@ In-cluster secrets are managed with [SOPS](https://github.com/getsops/sops) +
 safely in Git and Flux decrypts them at reconcile time.
 
 - **`.sops.yaml`** declares the age *public* key (safe to commit) and a rule
-  that encrypts only `data`/`stringData` fields of any `*.sops.yaml` file under
-  `mgmt/aws/`.
+  that encrypts only `data`/`stringData` fields of any `*.sops.yaml` file
+  under `mgmt/aws/`, `mgmt/azure/`, `mgmt/gcp/` or `workload/`.
 - The age *private* key lives in `age.agekey` (gitignored). The bootstrap
   loads it into the cluster as the `sops-age` secret in `flux-system`.
 
@@ -84,6 +84,22 @@ authenticate with workload identity, so there is nothing to rotate here. The
 only Azure credentials involved are the operator's own `az login` session and
 the age key used for the remaining SOPS-encrypted files above
 ([azure.md](./azure.md) covers the identity flow).
+
+## Age key on the workload clusters
+
+krops-bootstrap creates two Secrets on the management cluster for the age
+key. The first is `flux-system/sops-age`, which the management Flux reads
+to decrypt the management `*.sops.yaml` manifests. The second is
+`default/sops-age-resource-set`, of type `addons.cluster.x-k8s.io/resource-set`,
+which wraps the same key as a `sops-age.yaml` payload. The
+ClusterResourceSets in `mgmt/aws/addons/flux-apps/flux-instance.yaml` apply
+that payload to every workload cluster, so each workload Flux can decrypt
+`workload/**/*.sops.yaml` with `spec.decryption.secretRef` pointing at
+`sops-age`. Rotation means running `mise run sops-updatekeys`, re-running
+the bootstrap secret step so both Secrets carry the new key, and
+re-applying the payload by hand on each workload cluster, because the
+ClusterResourceSet strategy is ApplyOnce and a rotated payload is not
+pushed out automatically.
 
 ## Setting / rotating the GitHub PAT
 

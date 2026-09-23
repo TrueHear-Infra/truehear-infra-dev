@@ -159,26 +159,39 @@ def main() -> int:
             prefix_dir = REPO_ROOT / "mgmt/aws/clusters" / region
             if not prefix_dir.is_dir():
                 failures.append(f"environments.{name} teardown region {region!r} has no cluster directory")
-            # The K8s cluster name must equal the Kustomization namePrefix
-            # + 'workload' (the staged cluster.yaml names Cluster 'workload').
-            kustomization = prefix_dir / "staging/kustomization.yaml"
-            if kustomization.is_file():
-                text = kustomization.read_text()
-                expected_prefix = f"namePrefix: {region}-"
-                if expected_prefix not in text:
-                    failures.append(
-                        f"environments.{name} teardown: {kustomization.relative_to(REPO_ROOT)} "
-                        f"lacks '{expected_prefix}'"
-                    )
             cluster_name = workload.get("cluster-name", "")
             if cluster_name and not cluster_name.startswith(region):
                 failures.append(
                     f"environments.{name} teardown cluster-name {cluster_name!r} "
                     f"does not start with its region {region!r}"
                 )
-            # The RDS instance id is krops-<cluster>-db (mgmt/aws/
-            # infrastructure/workload-resources/dbinstance.yaml pins the
-            # literal identifiers).
+            # The K8s cluster name must equal the Kustomization namePrefix
+            # + the environment level: <region>-<env> comes from
+            # mgmt/aws/clusters/<region>/<env>/kustomization.yaml
+            # (namePrefix: <region>-) and <env>/cluster.yaml (Cluster <env>).
+            env_level = cluster_name[len(region) + 1:] if cluster_name.startswith(region + "-") else ""
+            env_dir = prefix_dir / env_level if env_level else None
+            if env_dir is None or not env_dir.is_dir():
+                failures.append(
+                    f"environments.{name} teardown cluster-name {cluster_name!r} "
+                    f"has no mgmt/aws/clusters/{region}/<env> directory"
+                )
+            else:
+                text = (env_dir / "kustomization.yaml").read_text()
+                expected_prefix = f"namePrefix: {region}-"
+                if expected_prefix not in text:
+                    failures.append(
+                        f"environments.{name} teardown: {env_dir.relative_to(REPO_ROOT)}/kustomization.yaml "
+                        f"lacks '{expected_prefix}'"
+                    )
+                cluster_text = (env_dir / "cluster.yaml").read_text()
+                if not re.search(rf"^kind: Cluster\nmetadata:\n  name: {re.escape(env_level)}$", cluster_text, re.M):
+                    failures.append(
+                        f"environments.{name} teardown: {env_dir.relative_to(REPO_ROOT)}/cluster.yaml "
+                        f"does not name its Cluster {env_level!r}"
+                    )
+            # This repo declares no RDS instance; the sweep-target field is
+            # still required by bootstrap-rs, so pin the format only.
             rds = workload.get("rds-instance", "")
             if cluster_name and rds != f"krops-{cluster_name}-db":
                 failures.append(
@@ -199,32 +212,30 @@ def main() -> int:
     # Global teardown constants pin to the manifests that define them.
     teardown = config.get("teardown", {})
     if teardown:
-        # The per-cluster reader roles created by the management cluster's
-        # ACK IAM controller (mgmt/aws/infrastructure/workload-resources/).
-        expected_roles = [
-            "krops-eu-north-1-workload-reader",
-            "krops-eu-west-1-workload-reader",
-        ]
-        roles = teardown.get("global-iam-roles", [])
-        for role in expected_roles:
-            if role not in roles:
-                failures.append(f"teardown.global-iam-roles missing {role}")
-        # The ACK controllers moved to the management cluster (issue #346);
-        # their deleted pod-identity roles must not linger in the sweep list.
-        for role in roles:
-            if role.startswith("krops-ack-"):
-                failures.append(
-                    f"teardown.global-iam-roles names deleted role {role}"
-                )
+        # The Pod Identity roles created by the management cluster's ACK IAM
+        # controller (mgmt/aws/infrastructure/<env>-pod-identity/roles.yaml,
+        # one directory per environment level): every `spec.name` there must
+        # be in the sweep list and vice versa.
+        declared = set()
+        for roles_yaml in sorted(
+            (REPO_ROOT / "mgmt/aws/infrastructure").glob("*-pod-identity/roles.yaml")
+        ):
+            declared |= set(
+                re.findall(r"^  name: (truehear-[a-z0-9-]+)$", roles_yaml.read_text(), re.M)
+            )
+        roles = set(teardown.get("global-iam-roles", []))
+        for role in sorted(declared - roles):
+            failures.append(f"teardown.global-iam-roles missing {role}")
+        for role in sorted(roles - declared):
+            failures.append(f"teardown.global-iam-roles names undeclared role {role}")
         reader_user = REPO_ROOT / "mgmt/aws/infrastructure/aws-global-iam/reader-user.yaml"
         users = teardown.get("global-iam-users", [])
         if reader_user.is_file() and "krops-reader" not in users:
             failures.append("teardown.global-iam-users missing krops-reader")
-        pattern = teardown.get("s3-bucket-pattern", "")
-        if pattern and "{account_id}" not in pattern or "{cluster_name}" not in pattern:
+        pattern = teardown.get("s3-bucket-pattern")
+        if pattern is not None:
             failures.append(
-                f"teardown.s3-bucket-pattern {pattern!r} must contain "
-                "{account_id} and {cluster_name}"
+                "teardown.s3-bucket-pattern is set but this repo declares no S3 Bucket CR"
             )
 
     if failures:

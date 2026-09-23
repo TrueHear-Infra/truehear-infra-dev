@@ -1,0 +1,141 @@
+# Use with the official hashicorp/vault chart version 0.34.1.
+global:
+  enabled: true
+  tlsDisable: false
+
+# Vault is being deployed first. Workload secret injection is a separate
+# capability and is deliberately disabled here.
+injector:
+  enabled: false
+
+csi:
+  enabled: false
+
+server:
+  image:
+    repository: hashicorp/vault
+    tag: 2.0.4
+    pullPolicy: IfNotPresent
+
+  updateStrategyType: OnDelete
+  logLevel: info
+  logFormat: json
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Keep one Vault member in each availability zone. This prevents a single
+  # worker or availability-zone failure from taking down every Vault member.
+  affinity: |
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ template "vault.name" . }}
+              app.kubernetes.io/instance: "{{ .Release.Name }}"
+              component: server
+          topologyKey: topology.kubernetes.io/zone
+
+  serviceAccount:
+    create: false
+    name: vault
+    createSecret: false
+    serviceDiscovery:
+      enabled: true
+
+  extraEnvironmentVars:
+    VAULT_CACERT: /vault/userconfig/vault-tls/ca.crt
+
+  volumes:
+    - name: vault-tls
+      secret:
+        secretName: vault-tls
+        defaultMode: 0440
+
+  volumeMounts:
+    - name: vault-tls
+      mountPath: /vault/userconfig/vault-tls
+      readOnly: true
+
+  # Each Vault member receives its own encrypted EBS volume. The StorageClass
+  # waits until the Pod is scheduled so AWS creates the disk in the same zone.
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    mountPath: /vault/data
+    storageClass: truehear-encrypted-gp3
+    accessMode: ReadWriteOnce
+
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+
+  auditStorage:
+    enabled: false
+
+  dev:
+    enabled: false
+
+  standalone:
+    enabled: false
+
+  ha:
+    enabled: true
+    replicas: 3
+    apiAddr: https://$(VAULT_K8S_POD_NAME).vault-internal.vault.svc.cluster.local:8200
+    clusterAddr: https://$(VAULT_K8S_POD_NAME).vault-internal.vault.svc.cluster.local:8201
+
+    disruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = true
+        disable_mlock = true
+
+        listener "tcp" {
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+          tls_disable = false
+          tls_cert_file = "/vault/userconfig/vault-tls/tls.crt"
+          tls_key_file = "/vault/userconfig/vault-tls/tls.key"
+          tls_min_version = "tls12"
+        }
+
+        storage "raft" {
+          path = "/vault/data"
+
+          retry_join {
+            leader_api_addr = "https://vault-0.vault-internal.vault.svc.cluster.local:8200"
+            leader_tls_servername = "vault-0.vault-internal.vault.svc.cluster.local"
+            leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+          }
+
+          retry_join {
+            leader_api_addr = "https://vault-1.vault-internal.vault.svc.cluster.local:8200"
+            leader_tls_servername = "vault-1.vault-internal.vault.svc.cluster.local"
+            leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+          }
+
+          retry_join {
+            leader_api_addr = "https://vault-2.vault-internal.vault.svc.cluster.local:8200"
+            leader_tls_servername = "vault-2.vault-internal.vault.svc.cluster.local"
+            leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+          }
+        }
+
+        service_registration "kubernetes" {}
+
+ui:
+  enabled: true
+  serviceType: ClusterIP
+  externalPort: 8200
+  targetPort: 8200

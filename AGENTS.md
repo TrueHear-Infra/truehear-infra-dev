@@ -84,11 +84,14 @@ resources. There is no app source code here, only declarative infrastructure.
   pivot pins `mgmt` via `pivot-manifest-vars`). Non-secret IDs live in
   `gcp-vars` (flux-system) and the workload `cluster-vars`. Teardown is
   manual until the live acceptance run.
-- `workload/`: synced by each WORKLOAD cluster's Flux.
-  - `base/`: intentionally empty since issue #346 (the ACK controllers and
-    the S3/RDS/IAM custom resources moved to `mgmt/aws/infrastructure/`);
-    the workload Flux instance stays ready for a future application
-    workload.
+- `workload/`: synced by each WORKLOAD cluster's Flux. Layering:
+  `base/` (vendored TrueHear service roots and charts from
+  truehear-cloud-development, byte-identical, never edited in place;
+  refresh with `scripts/vendor-truehear-services.sh <sha>`) ->
+  `environments/<env>/` (one overlay directory per environment; Secrets
+  generated encrypted with `mise run truehear-env-secrets -- --env <env>`)
+  -> `eu-north-1-<env>/` (sync root with the ordered Flux Kustomizations).
+  `tests/test-workload-overlays.py` gates the cross-file invariants.
   - `azure-base/`: cert-manager, ASO (workload identity), and the Azure
     resources (VNet + delegated subnet + private DNS, storage account +
     container, PostgreSQL Flexible Server). `swedencentral-01/` points at it.
@@ -102,7 +105,8 @@ resources. There is no app source code here, only declarative infrastructure.
     per-cluster reader GSA). `europe-north1-01/` points at it;
     `tests/test-gcp-identity-chain.py` cross-checks the WIF
     pool/provider/subject couplings against `mgmt/gcp/`.
-  - `<region>-01/`: per-cluster overlays pointing at `../base`.
+  - `<region>-01/`: per-cluster overlays for azure/gcp (aws uses
+    `eu-north-1-<env>/` per the layering above).
 - `airgap/`: Zarf offline transfer bundle for the local-host profile.
   `zarf.yaml` is the authoritative image listing for the package and
   `images.txt` is the superset inventory (the `scripts/` preloads derive from
@@ -167,6 +171,10 @@ resources. There is no app source code here, only declarative infrastructure.
 - `docs/`: detailed documentation (see the table in README.md).
   `docs/proposals/` holds design proposals under review (not yet decided or
   implemented); the docs site assembler includes that folder.
+- `runbooks/`: operator runbooks that document the live state of a branch
+  (one-time setup, lifecycle commands, verification, teardown). Not
+  Flux-reconciled and not part of the docs site; keep a runbook in step with
+  the branch it targets (see `runbook-sync`).
 - `mise.toml`: pinned tool versions and all task entrypoints.
   `mise.aws.toml` is the AWS tool layer (aws-cli, clusterawsadm),
   activated with `MISE_ENV=aws`. `mise.azure.toml` (azure-cli) and
