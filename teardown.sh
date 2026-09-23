@@ -145,7 +145,7 @@ REGIONS="eu-north-1"
 # Global IAM roles (region-independent): the Pod Identity roles for each
 # workload cluster's platform controllers, created by the management cluster's
 # ACK IAM controller (mgmt/aws/infrastructure/<env>-pod-identity/roles.yaml)
-GLOBAL_IAM_ROLES="truehear-dev-ebs-csi truehear-dev-aws-load-balancer-controller truehear-staging-ebs-csi truehear-staging-aws-load-balancer-controller"
+GLOBAL_IAM_ROLES="truehear-staging-ebs-csi truehear-staging-aws-load-balancer-controller"
 
 # Global IAM users: the console reader user created by the management
 # cluster's ACK IAM controller (mgmt/aws/infrastructure/aws-global-iam/
@@ -213,7 +213,7 @@ PROVIDER_DELETE_TIMEOUT="${PROVIDER_DELETE_TIMEOUT:-300}"
 # environment level under mgmt/aws/clusters/<region>/<env>/). The lookup
 # helpers take a target and derive every AWS-side name from it; the Rust
 # teardown reads the same list from bootstrap.toml [[aws-workloads]].
-WORKLOAD_TARGETS="eu-north-1:dev eu-north-1:staging"
+WORKLOAD_TARGETS="eu-north-1:staging"
 
 _target_region() { echo "${1%%:*}"; }
 _target_env()    { echo "${1#*:}"; }
@@ -228,8 +228,8 @@ _get_cluster_name() {
 }
 
 # CAPA creates the EKS cluster with the namespace separator as an underscore.
-# K8s Cluster name:  default-eu-north-1-dev-control-plane (dashes)
-# EKS cluster name:  default_eu-north-1-dev-control-plane (underscore)
+# K8s Cluster name:  default-eu-north-1-staging-control-plane (dashes)
+# EKS cluster name:  default_eu-north-1-staging-control-plane (underscore)
 _get_eks_cluster() {
   echo "default_$(_get_cluster_name "$1")-control-plane"
 }
@@ -609,7 +609,7 @@ _cleanup_iam_role() {
 # CAPA (EKSEnableIAM=true) auto-creates per-cluster IAM roles whose exact
 # names are not declared in Git (e.g. <cluster>-iam-service-role and the
 # nodegroup roles). Sweep every role whose name starts with the cluster name –
-# that prefix ("eu-north-1-dev") is unique to this repo's clusters.
+# that prefix ("eu-north-1-staging") is unique to this repo's clusters.
 _cleanup_capa_iam_roles() {
   _cluster_name="$1"
 
