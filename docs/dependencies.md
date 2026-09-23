@@ -107,8 +107,7 @@ release lookups and the `docker`-datasource digest-pinned images those same
 providers deploy (`registry.k8s.io/cluster-api*`,
 `registry.k8s.io/cluster-api-helm/*`, `gcr.io/k8s-staging-cluster-api/*`), so
 a CAPI version bump lands its release assets and images in one PR instead of
-two. CAPZ's one-minor-at-a-time override (issue #71) only matches the
-`github-releases` datasource, so it is unaffected by the image grouping.
+two.
 
 ## Toolbox release version
 

@@ -2109,7 +2109,8 @@ async fn pivot_install_capi_in_target(
     // The Git file carries ${VAR} placeholders (Flux postBuild substitutes
     // them on the source side); the target has no Flux yet, so substitute
     // here from the ConfigMaps the bootstrap cluster's Flux reconciled
-    // (azure-vars) before applying, and fail naming any variable that has
+    // (the environment's non-secret vars ConfigMap) before applying, and fail
+    // naming any variable that has
     // no source value.
     if !cfg.environment.pivot_manifests.is_empty() {
         println!(">>> Applying pivot manifests in the target...");
@@ -2692,8 +2693,8 @@ async fn run_bootstrap(cfg: &Config, http: &reqwest::Client) -> Result<()> {
     ensure_kind_cluster(cfg, &preflight.engine, &preflight.engine_sock).await?;
 
     // Optional provider hook (issue #236): runs on both the fresh-create and
-    // healthy-reuse paths so a rerun re-asserts the setup (e.g. azure Arc
-    // federation). A non-zero exit aborts the bootstrap before Flux installs.
+    // healthy-reuse paths so a rerun re-asserts the setup. A non-zero exit
+    // aborts the bootstrap before Flux installs.
     if let Some(task) = &cfg.environment.post_kind_create_task {
         println!(
             ">>> Running post-kind-create task '{task}' (mise -E {} run {task})...",
@@ -3090,8 +3091,9 @@ mod tests {
     #[test]
     fn pivot_manifests_apply_after_provider_manifests() {
         // Guard the Phase 3 ordering contract: pivot-manifests are applied
-        // after provider CRs (CAPZ must exist before its identity Secret is
-        // meaningful) and before pivot-sops-secrets. The ordering lives in
+        // after provider CRs (the provider must exist before its identity
+        // Secret is meaningful) and before pivot-sops-secrets. The ordering
+        // lives in
         // pivot_install_capi_in_target; this test pins the source order.
         let src = include_str!("main.rs");
         let providers = src

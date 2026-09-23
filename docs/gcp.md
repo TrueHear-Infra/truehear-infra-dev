@@ -1,18 +1,18 @@
 # GCP environment
 
-The `gcp` environment mirrors `azure`: a kind bootstrap cluster runs Flux,
+The `gcp` environment mirrors `aws`: a kind bootstrap cluster runs Flux,
 CAPG builds a GKE management cluster, the pivot moves the management objects
 into it, and the GKE workload cluster runs its own Config Connector (KCC)
 that reconciles GCP resources from `workload/gcp-base/`.
 
-| AWS (`aws`) | Azure (`azure`) | GCP (`gcp`) |
-|---|---|---|
-| CAPA, `AWSManagedControlPlane` | CAPZ, `AzureASOManagedControlPlane` | CAPG v1.13.1, `GCPManagedControlPlane` (GKE) |
-| ACK controllers on the management cluster only (issue #346) | ASO 2.19.0 Helm release | Config Connector (KCC 1.156.0) Helm release |
-| Static SOPS credentials on the management cluster (no EKS Pod Identity since issue #346) | Entra Workload Identity | Workload Identity Federation (WIF pool `krops`) |
-| S3 bucket | Storage account + blob container | Storage bucket (versioning, uniform access, PAP) |
-| RDS PostgreSQL | PostgreSQL Flexible Server | Cloud SQL (private IP, IAM auth) |
-| IAM reader role | none yet (follow-up) | `krops-reader` GSA + per-cluster reader GSA |
+| AWS (`aws`) | GCP (`gcp`) |
+|---|---|
+| CAPA, `AWSManagedControlPlane` | CAPG v1.13.1, `GCPManagedControlPlane` (GKE) |
+| ACK controllers on the management cluster only (issue #346) | Config Connector (KCC 1.156.0) Helm release |
+| Static SOPS credentials on the management cluster (no EKS Pod Identity since issue #346) | Workload Identity Federation (WIF pool `krops`) |
+| S3 bucket | Storage bucket (versioning, uniform access, PAP) |
+| RDS PostgreSQL | Cloud SQL (private IP, IAM auth) |
+| IAM reader role | `krops-reader` GSA + per-cluster reader GSA |
 
 ![krops gcp architecture](gcp-infra.svg)
 

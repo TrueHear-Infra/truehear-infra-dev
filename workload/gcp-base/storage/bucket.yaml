@@ -1,6 +1,6 @@
 ---
 # ══════════════════════════════════════════════════════════════════════════════
-# Application data bucket (issue #72, the S3 and Azure blob counterparts).
+# Application data bucket (issue #72, the S3 counterpart).
 # The S3 posture: no public access (publicAccessPrevention enforced +
 # uniformBucketLevelAccess, i.e. ACLs disabled), versioning, soft delete.
 # Encryption is Google-managed by default. resourceID is globally unique:

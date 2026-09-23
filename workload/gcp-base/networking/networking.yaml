@@ -1,7 +1,7 @@
 ---
 # ══════════════════════════════════════════════════════════════════════════════
-# Private Service Access for Cloud SQL (issue #72, the AWS NAT/egress and
-# Azure delegated-subnet counterparts).
+# Private Service Access for Cloud SQL (issue #72, the AWS NAT/egress
+# counterpart).
 #
 # A global ComputeAddress reserves a /16 in the global IP space for the PSA
 # range, and ServiceNetworkingConnection peers it into the workload VPC (the

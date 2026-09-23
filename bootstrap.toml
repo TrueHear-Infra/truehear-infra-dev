@@ -168,47 +168,6 @@ capi-workloads = []
 # sweep (that is the local-host CAPD path) and no AWS orphan sweep.
 hardware-release = true
 
-[environments.azure]
-kind = "azure"
-# Flux syncs the GitHub repository (GitRepository + flux-github-pat), like aws.
-sync = "github"
-sync-path = "mgmt/azure"
-mgmt-cluster = "swedencentral-management"
-mgmt-ready-timeout = "40m"
-infra-provider-namespace = "capz-system"
-infra-provider-name = "azure"
-provider-manifests = [
-  "mgmt/azure/capi-providers/capi-system/namespace.yaml",
-  "mgmt/azure/capi-providers/capi-system/providers.yaml",
-  "mgmt/azure/capi-providers/capz-system/namespace.yaml",
-  "mgmt/azure/capi-providers/capz-system/capz-variables.yaml",
-  "mgmt/azure/capi-providers/capz-system/providers.yaml",
-  "mgmt/azure/capi-providers/caaph-system/namespace.yaml",
-  "mgmt/azure/capi-providers/caaph-system/addon-provider.yaml",
-]
-# Post-kind hook (issue #236): Arc-connect the kind cluster and federate
-# CAPZ/ASO via workload identity before Flux installs anything.
-post-kind-create-task = "arc-federate"
-# Plain manifests applied to the pivot target before `clusterctl move`
-# (issue #236): the secret-free aso-credentials Secret that the moved ASO
-# resources reference by name (replaces pivot-sops-secrets).
-pivot-manifests = [
-  "mgmt/azure/infrastructure/azure-identity/aso-credentials.yaml",
-]
-
-[environments.azure.teardown]
-# Teardown is manual until the live acceptance run (issue #71 follow-up)
-# establishes the orphan sweep for AKS/ASO. The binary refuses to run and
-# prints this text.
-manual = """Azure teardown is not automated yet.
-  1. Suspend Flux: flux suspend kustomization --all
-  2. Delete the workload Cluster objects and wait for CAPZ to remove AKS
-  3. Delete the resource groups: az group delete --yes --name <rg>
-     (krops-swedencentral-workload-data, swedencentral-workload,
-      swedencentral-management, krops-shared, and every MC_* node group)
-  4. Delete the Arc resource: az connectedk8s delete --name krops-azure-bootstrap --resource-group krops-shared
-(the kind-issuer FICs krops-capz-kind-capz / krops-capz-kind-aso on the krops-capz identity may also be deleted; they are upserted on the next bootstrap)"""
-
 [environments.gcp]
 kind = "gcp"
 # Flux syncs the GitHub repository (GitRepository + flux-github-pat), like aws.

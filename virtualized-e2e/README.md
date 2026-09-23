@@ -9,7 +9,7 @@ resources.
 
 Phase 0 (spikes) proved an interception mechanism per cloud; the findings
 live in [docs/wiremock-e2e-spike-findings-aws.md](../../docs/wiremock-e2e-spike-findings-aws.md)
-and its Azure/GCP siblings. This tree is Phase 1: the shared harness library
+and its GCP sibling. This tree is Phase 1: the shared harness library
 plus one arm per cloud.
 
 ## Layout
@@ -34,8 +34,7 @@ virtualized-e2e/
 ```
 
 `aws/` is the reference arm. `gcp/` is the second arm (CoreDNS rewrite +
-SAN-matched TLS, with the WIF credential repoint for the auth path). The
-Azure arm is a follow-up task.
+SAN-matched TLS, with the WIF credential repoint for the auth path).
 
 ## What is NOT here yet
 

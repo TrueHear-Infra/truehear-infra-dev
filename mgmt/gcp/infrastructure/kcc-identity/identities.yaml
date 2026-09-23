@@ -4,9 +4,8 @@
 # by Config Connector (issue #72). Display names must match gcp-bootstrap's
 # `sa()` calls exactly (KCC adoption is immutable on displayName).
 #
-#   krops-capg   CAPG + management-side Config Connector (the krops-capz
-#                precedent: one GSA for both, split later if a least-privilege
-#                review demands it).
+#   krops-capg   CAPG + management-side Config Connector (one GSA for both,
+#                split later if a least-privilege review demands it).
 #   krops-kcc    the workload-cluster Config Connector (GKE-native WI, bound
 #                per-cluster in europe-north1-workload.yaml).
 #   krops-reader the human read-only identity; humans impersonate it.
