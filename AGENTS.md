@@ -49,22 +49,6 @@ resources. There is no app source code here, only declarative infrastructure.
   management-only; no `addons/` (Talos ships its own CNI, no
   HelmChartProxy consumers). The wiring landed in #169 and the docs in
   #171; the remaining #105 item is the hardware acceptance run.
-- `mgmt/azure/`: the Azure management variant (issue #71). Same component
-  layout as `mgmt/aws/` (`infrastructure/`, `capi-providers/`, `addons/`,
-  `clusters/`), synced from GitHub. CAPZ v1.27.0 (`capi-providers/capz-system/`)
-  bundles Azure Service Operator (ASO) into `capz-system`; clusters are
-  `AzureASOManaged*` (AKS) with the ASO resources inline. The bundled ASO also
-  reconciles the identity plumbing in `infrastructure/aso-workload-identity/`
-  (user-assigned identities, per-cluster data resource group, role assignment,
-  federated credentials), which replaces ACK pod identity. Credentials: none at
-  rest; workload identity via the `krops-capz` UAMI (AzureClusterIdentity
-  `type: WorkloadIdentity` + `credential-from` aso-credentials, a plain
-  Secret). Federation is set up by the `arc-federate` mise task
-  (`post-kind-create-task`): Arc OIDC issuer for kind, then the management
-  cluster's own OIDC issuer post-pivot (issue #236). Non-secret IDs live in
-  `azure-vars` (flux-system) and in the workload `cluster-vars`. Upgrade CAPZ
-  one minor at a time (ASO CRD migrations). Teardown is manual until the live
-  acceptance run.
 - `mgmt/gcp/`: the GCP management variant (issue #72). Same component
   layout as `mgmt/aws/` (`infrastructure/`, `capi-providers/`, `addons/`,
   `clusters/`), synced from GitHub. CAPG v1.13.1
@@ -92,12 +76,6 @@ resources. There is no app source code here, only declarative infrastructure.
   generated encrypted with `mise run truehear-env-secrets -- --env <env>`)
   -> `eu-north-1-<env>/` (sync root with the ordered Flux Kustomizations).
   `tests/test-workload-overlays.py` gates the cross-file invariants.
-  - `azure-base/`: cert-manager, ASO (workload identity), and the Azure
-    resources (VNet + delegated subnet + private DNS, storage account +
-    container, PostgreSQL Flexible Server). `swedencentral-01/` points at it.
-    `tests/test-azure-identity-chain.py` (in `mise run validate` and CI)
-    cross-checks the ConfigMap/subject couplings between these and
-    `mgmt/azure/infrastructure/aso-workload-identity/`.
   - `gcp-base/` (PR 2, issue #72): Config Connector (the same
     pinned operator bundle as the management side; it ships its own webhook
     certs, so no cert-manager) and the GCP resources
@@ -105,7 +83,7 @@ resources. There is no app source code here, only declarative infrastructure.
     per-cluster reader GSA). `europe-north1-01/` points at it;
     `tests/test-gcp-identity-chain.py` cross-checks the WIF
     pool/provider/subject couplings against `mgmt/gcp/`.
-  - `<region>-01/`: per-cluster overlays for azure/gcp (aws uses
+  - `<region>-01/`: per-cluster overlays for gcp (aws uses
     `eu-north-1-<env>/` per the layering above).
 - `airgap/`: Zarf offline transfer bundle for the local-host profile.
   `zarf.yaml` is the authoritative image listing for the package and
@@ -141,11 +119,9 @@ resources. There is no app source code here, only declarative infrastructure.
   `lib/wiremock/`, the `scenario-schema.json` Phase 3 shape,
   `sanitize_recording.py`, `assertions.py`); `<cloud>/wiremock/` carries one
   arm per cloud with only what differs (interception patches, boot stubs,
-  arm README). `aws/` is the reference arm; `azure/` adds the second arm
-  (ASO endpoint configuration via `aso-controller-settings`, plus a
-  CoreDNS rewrite covering CAPZ and MSAL instance discovery); `gcp/`
-  mirrors the reference with the CoreDNS-rewrite + SAN-cert interception
-  and WIF credential repoint from its Phase 0 spike. The kustomize
+  arm README). `aws/` is the reference arm; `gcp/`
+  is the second arm (CoreDNS-rewrite + SAN-cert interception
+  and WIF credential repoint from its Phase 0 spike). The kustomize
   overlays here are built by `mise run validate` like the `mgmt`/`workload`
   ones.
 - `bootstrap-rs/`: `krops-bootstrap`, the Rust CLI that ports the imperative
@@ -154,7 +130,7 @@ resources. There is no app source code here, only declarative infrastructure.
   rerun-safe-by-default semantics. Chart versions it installs imperatively
   are Renovate-annotated constants in `src/main.rs`. CI (bootstrap-rs
   workflow) runs fmt/clippy/build/test; the toolchain is pinned in
-  `rust-toolchain.toml`. Five config-driven knobs added for azure and gcp:
+  `rust-toolchain.toml`. Config-driven knobs (kept for future environments):
   `pivot-sops-secrets` (SOPS manifests applied in the pivot target before
   the move), `teardown.manual` (refuse with operator text),
   `post-kind-create-task` (mise task run after kind creation) and
@@ -175,12 +151,12 @@ resources. There is no app source code here, only declarative infrastructure.
   (one-time setup, lifecycle commands, verification, teardown). Not
   Flux-reconciled and not part of the docs site; keep a runbook in step with
   the branch it targets (see `runbook-sync`).
-- `mise.toml`: pinned tool versions and all task entrypoints.
+  - `mise.toml`: pinned tool versions and all task entrypoints.
   `mise.aws.toml` is the AWS tool layer (aws-cli, clusterawsadm),
-  activated with `MISE_ENV=aws`. `mise.azure.toml` (azure-cli) and
-  `mise.gcp.toml` (gcloud, plus the `gcp-bootstrap`, `wif-federate` and
-  `kubeconfigs` tasks; gcloud state lives in the gitignored `.gcloud/`
-  shared with the toolbox) are the other per-environment layers.
+  activated with `MISE_ENV=aws`. `mise.gcp.toml` (gcloud, plus the
+  `gcp-bootstrap`, `wif-federate` and `kubeconfigs` tasks; gcloud state
+  lives in the gitignored `.gcloud/` shared with the toolbox) is the other
+  per-environment layer.
   Helper tasks run inside the toolbox image via `--entrypoint mise`
   (issue #423); `validate` and `podinfo-port-forward` stay host tasks by
   design; `MISE_AUTO_INSTALL=0` is mandatory for in-toolbox runs and mise's
@@ -319,9 +295,8 @@ Load these only when the task touches their domain:
 
 - `docs/architecture.md`: reconciliation order, how workload apps are delivered.
 - `docs/bootstrap-cli.md`: the `krops-bootstrap` Rust CLI: interface, env knobs, pivot, parity status.
-- `docs/azure.md`: the Azure environment: subscription prep, credentials, AKS clusters, ASO on workload clusters, upgrade rules.
 - `docs/gcp.md`: the GCP environment: project prep, WIF credentials (no keys), GKE clusters, Config Connector on the workload cluster, upgrade rules.
-- `docs/extending.md`: adding a workload cluster, adding apps, adding other providers (Azure, Talos, k0smotron).
+- `docs/extending.md`: adding a workload cluster, adding apps, adding other providers (Talos, k0smotron).
 - `docs/secrets.md`: SOPS + age setup, credential rotation.
 - `docs/konflate.md`: rendered PR review, CI gate, tokens, write-back.
 - `docs/aws-iam.md`: management-cluster ACK controllers (static SOPS credentials, union scope), reader roles, reader user.
