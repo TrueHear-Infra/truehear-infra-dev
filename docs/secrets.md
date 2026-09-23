@@ -6,7 +6,7 @@ safely in Git and Flux decrypts them at reconcile time.
 
 - **`.sops.yaml`** declares the age *public* key (safe to commit) and a rule
   that encrypts only `data`/`stringData` fields of any `*.sops.yaml` file
-  under `mgmt/aws/`, `mgmt/gcp/` or `workload/`.
+  under `mgmt/aws/` or `workload/`.
 - The age *private* key lives in `age.agekey` (gitignored). The bootstrap
   loads it into the cluster as the `sops-age` secret in `flux-system`.
 

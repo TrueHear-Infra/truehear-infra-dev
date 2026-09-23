@@ -5,8 +5,8 @@ platform. A disposable local [kind](https://kind.sigs.k8s.io/) cluster
 bootstraps [Flux](https://fluxcd.io/), provisions the self-managed management
 cluster through CAPI, and is deleted after a `clusterctl move` pivot. The
 management cluster then reconciles itself and all downstream infrastructure from
-this repository across multiple supported environments: AWS (`aws`), GCP
-(`gcp`), local Docker (`local-host`), bare-metal Talos
+this repository across multiple supported environments: AWS (`aws`),
+local Docker (`local-host`), bare-metal Talos
 (`local-talos`), and an air-gapped bundle (`airgap`).
 
 The operator normally runs the imperative lifecycle through the
@@ -164,128 +164,6 @@ workload/eu-north-1-staging declares the six Flux Kustomizations.
 
 See [AWS authentication & IAM](./aws-iam.md) for how the ACK controllers
 authenticate and what the per-environment Pod Identity roles create.
-
-## GCP environment (gcp)
-
-The `gcp` environment mirrors `aws`: a disposable kind cluster bootstraps
-Flux, CAPG v1.13.1 provisions a GKE management cluster
-(`europe-north1-management`), the pivot moves the management objects into
-it, and the GKE workload cluster runs its own Config Connector (KCC 1.156.0)
-reconciling GCP resources from `workload/gcp-base/`.
-
-No GCP secret exists at rest. CAPG and the management-side Config Connector
-authenticate with Workload Identity Federation against the `krops` pool:
-their service accounts present the cluster's projected token through the
-`kind` provider at bootstrap and the Git-declared `mgmt` provider
-post-pivot, and the credential files are plain `external_account` Secrets
-with a subject condition restricted to exactly those two service accounts
-(`krops-capg` is the GSA they impersonate). The workload cluster uses
-GKE-native Workload Identity through `krops-kcc`. The pivot applies the two
-credential Secrets to the target before `clusterctl move`
-(`pivot-manifests`) and pins `GCP_WIF_PROVIDER=mgmt`
-(`pivot-manifest-vars`), because the source-side ConfigMap merge order
-cannot guarantee it.
-
-See the architecture diagram in [docs/gcp-infra.svg](gcp-infra.svg) and the
-[GCP environment guide](./gcp.md).
-
-![krops gcp architecture](gcp-infra.svg)
-
-```mermaid
-flowchart TD
-    subgraph bootstrap["Bootstrap (one-time, krops-bootstrap CLI)"]
-        KIND[kind cluster: mgmt, disposable]
-        WIF["wif-federate (post-kind-create-task)<br/>krops pool + kind provider + JWKS"]
-        HELM[Helm: flux-operator + FluxInstance]
-        KIND --> WIF
-        KIND --> HELM
-    end
-
-    subgraph git["Git: github.com/polarsquad/krops"]
-        REPO[(main branch)]
-    end
-
-    HELM -->|"sync: mgmt/gcp/"| REPO
-
-    subgraph mgmt["Management cluster (self-managed after the pivot) - Flux Kustomizations"]
-        FS[flux-system root]
-        GCPV[gcp-vars ConfigMap]
-        CM[cert-manager]
-        CO[capi-operator]
-        CAPIS[capi-system]
-        CAPGS["capg-system (CAPG v1.13.1)<br/>WIF credential Secret, secret-free"]
-        CAAPH[caaph-system]
-        KCCO["kcc-operator (1.156.0, pinned bundle)"]
-        KCC["kcc (ConfigConnector in cnrm-system)<br/>WIF credential Secret"]
-        KCCI["kcc-identity (KCC-managed)<br/>krops pool + mgmt provider + GSA grants"]
-        EUNC["europe-north1 cluster defs<br/>europe-north1-management (self-hosted)<br/>europe-north1-workload"]
-        FA["flux-apps (SOPS pull secret)<br/>HelmChartProxy + ClusterResourceSets"]
-
-        FS --> CM --> CO --> CAPIS --> CAPGS
-        CAPIS --> CAAPH --> FA
-        FS --> KCCO --> KCC --> KCCI
-        CAPGS --> EUNC
-    end
-
-    REPO --> FS
-
-    subgraph gcp["GCP: europe-north1"]
-        GKE[GKE: europe-north1-management<br/>+ europe-north1-workload]
-        POOL["Workload Identity Pool: krops<br/>providers: kind (bootstrap) + mgmt (Git)"]
-        GSAS["krops-capg / krops-kcc / krops-reader GSAs"]
-        VPC[(VPC + PSA range: krops-europe-north1-workload-psa)]
-        BUCKET[(Storage bucket: krops-&lt;number&gt;-europe-north1-workload-data)]
-        SQL[(Cloud SQL: krops-europe-north1-workload-db<br/>private IP, IAM auth)]
-    end
-
-    EUNC -->|CAPG provisions| GKE
-    KCCI -->|KCC creates| POOL
-    KCCI -->|KCC creates| GSAS
-    KCC -->|KCC reconciles| SQL
-    FA -->|"HelmChartProxy: flux-operator<br/>CRS: FluxInstance + cluster-vars + pull secret"| WF
-
-    subgraph wl["Workload cluster europe-north1-workload (GKE)"]
-        WF["Flux (sync: workload/europe-north1-01)"]
-        WKCCO["kcc-operator Ks<br/>KCC 1.156.0 operator (wait: true)"]
-        WKCC["kcc Ks<br/>cluster-mode ConfigConnector<br/>GKE Workload Identity via krops-kcc"]
-        WNET["networking Ks<br/>PSA range + peering (dependsOn: kcc)"]
-        WSTOR["storage Ks<br/>bucket (dependsOn: kcc)"]
-        WPSQL["postgres Ks<br/>Cloud SQL (dependsOn: kcc, networking)"]
-        WIAM["iam Ks<br/>per-cluster reader GSA (dependsOn: kcc, storage)"]
-
-        WF --> WKCCO --> WKCC --> WNET
-        WKCC --> WSTOR
-        WKCC --> WPSQL
-        WKCC --> WIAM
-    end
-
-    WF --> REPO
-    GKE -.->|GKE-native Workload Identity token| WKCC
-    WNET -->|reconciles| VPC
-    WSTOR -->|reconciles| BUCKET
-    WPSQL -->|reconciles| SQL
-```
-
-### Reconciliation order (GCP management cluster)
-
-```
-gcp-vars ▶ cert-manager ▶ capi-operator ▶ capi-system ▶ capg-system (GCPManaged* CRDs)
-                                                        ├▶ caaph-system ▶ flux-apps
-gcp-vars ▶ kcc-operator (StatefulSet Ready) ▶ kcc (cnrm-system) ▶ kcc-identity (krops pool, mgmt provider)
-europe-north1 clusters (dependsOn: capg-system, gcp-vars)
-```
-
-### Reconciliation order (GCP workload cluster)
-
-```
-kcc-operator (operator StatefulSet Ready; the pinned bundle ships its own
-webhook certs, so no cert-manager) ▶ kcc (ConfigConnector, no wait: the CR
-has no standard ready condition)
-                                     ├▶ networking (PSA range + peering)
-                                     ├▶ storage (bucket)
-                                     ├▶ postgres (Cloud SQL, dependsOn: networking)
-                                     └▶ iam (per-cluster reader GSA, dependsOn: storage)
-```
 
 ## Local host environment (local-host)
 
