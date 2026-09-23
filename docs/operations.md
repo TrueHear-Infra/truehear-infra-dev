@@ -6,7 +6,7 @@
 
 The toolbox image (`ghcr.io/polarsquad/krops-toolbox`) carries
 `krops-bootstrap` plus every tool used by bootstrap, pivot, and teardown. It
-intentionally omits development-only Go and Python toolchains and the Zarf CLI.
+intentionally omits development-only Go and Python toolchains.
 The host needs the repository checkout and a running Docker engine or Podman
 5.5+.
 
@@ -171,7 +171,7 @@ Rules that apply to every helper run:
   a container is the container itself. A kubeconfig exported that way works
   from later toolbox runs on the kind network, not from host `kubectl`.
 - `MISE_AUTO_INSTALL=0` is required. The mounted `mise.toml` pins dev-only
-  tools (`zarf`, `go`) that the image does not carry; without the flag mise
+  tools (`go`) that the image does not carry; without the flag mise
   tries to install them, and as a non-root user that fails with `Permission
   denied` under `/usr/local/share/mise`.
 - mise loads `/workspace/.env` (`env_file` in `mise.toml`) and its values
@@ -586,7 +586,7 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
 ```
 
 `.github/workflows/validate.yml` separately builds every overlay, runs the
-Renovate air-gap digest and managed-pin coverage tests, cross-checks
+Renovate managed-pin coverage tests, cross-checks
 `bootstrap.toml`, and lints YAML on pushes to `main` and on pull requests.
 `.github/workflows/bootstrap-rs.yml` runs Rust format, clippy, build, and tests,
 then builds and smokes the toolbox image when its inputs change.

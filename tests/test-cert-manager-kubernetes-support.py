@@ -4,8 +4,8 @@
 cert-manager only supports a rolling window of Kubernetes versions per release
 (https://cert-manager.io/docs/releases/); this repo hit that wall directly
 when cert-manager v1.21.x (supports v1.33-v1.36) was paired with a
-Renovate-bumped Kubernetes v1.37.0, breaking the daily air-gapped workflow
-silently until root-caused (issue #322). This gate tracks that support
+Renovate-bumped Kubernetes v1.37.0, breaking the daily scheduled local-host
+workflow silently until root-caused (issue #322). This gate tracks that support
 window from cert-manager's own published "Currently supported releases"
 table -- there is no versioned/structured feed for it (cert-manager/cert-
 manager#9123 asks upstream to formalize one), so this fetches the same

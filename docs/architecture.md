@@ -5,8 +5,8 @@ platform. A disposable local [kind](https://kind.sigs.k8s.io/) cluster
 bootstraps [Flux](https://fluxcd.io/), provisions the self-managed management
 cluster through CAPI, and is deleted after a `clusterctl move` pivot. The
 management cluster then reconciles itself and all downstream infrastructure from
-this repository across multiple supported environments: AWS (`aws`),
-local Docker (`local-host`), and an air-gapped bundle (`airgap`).
+this repository across two supported environments: AWS (`aws`) and
+local Docker (`local-host`).
 
 The operator normally runs the imperative lifecycle through the
 `krops-toolbox` container. It mounts the host engine socket, joins the kind
@@ -234,18 +234,3 @@ Workload cluster:
 ```
 podinfo (HelmRelease reconciled by local workload Flux from OCI artifact)
 ```
-
-## Air-gapped bundle (airgap)
-
-The air-gap bundle packages the `local-host` profile with [Zarf](https://zarf.dev)
-for completely disconnected deployments. A connected build machine renders the
-krops GitOps tree, pulls required container images and charts, generates Syft
-SBOMs, and signs the resulting package. On the disconnected deploy host, Zarf
-initializes an internal container registry and proxy agent that rewrites image
-pulls, while Flux reconciles the offline management and workload clusters with zero
-external network traffic.
-
-See the architecture diagram in [docs/air-gap-infra.svg](air-gap-infra.svg) and
-the [Air-gapped krops guide](./airgap.md).
-
-![krops air-gap architecture](air-gap-infra.svg)
