@@ -15,7 +15,7 @@ Env:
   TOOLBOX_IMAGE   image reference (default: ${TOOLBOX_IMAGE:-ghcr.io/polarsquad/krops-toolbox:latest};
                   build locally with: docker build -f bootstrap-rs/Dockerfile \\
                     -t krops-toolbox:dev . && TOOLBOX_IMAGE=krops-toolbox:dev)
-  KROPS_PROFILE aws | gcp | local-host | local-talos
+  KROPS_PROFILE aws | local-host | local-talos
                   (default: the mise environment in use)
 EOF
   exit 2
@@ -122,9 +122,6 @@ PASS_ENV=(
   -e AWS_ACCESS_KEY_ID
   -e AWS_SECRET_ACCESS_KEY
   -e AWS_SESSION_TOKEN
-  -e GCP_PROJECT
-  -e GCP_REGION
-  -e CLOUDSDK_CONFIG
 )
 
 # Repo-local persistent kubeconfig state (gitignored): the toolbox's internal
@@ -147,7 +144,6 @@ case "$LIFECYCLE" in
   *)         usage ;;
 esac
 
-# The duplicate CLOUDSDK_CONFIG below is intentional; see docs/operations.md.
 exec "$CONTAINER_ENGINE" run --rm ${TTY_ARGS[@]+"${TTY_ARGS[@]}"} \
   -v "$REPO_ROOT:/workspace" \
   -w /workspace \
@@ -155,6 +151,5 @@ exec "$CONTAINER_ENGINE" run --rm ${TTY_ARGS[@]+"${TTY_ARGS[@]}"} \
   -v "$REPO_ROOT/.kube:/root/.kube" \
   -e KUBECONFIG="$KUBECONFIG_IN" \
   "${PASS_ENV[@]}" \
-  -e CLOUDSDK_CONFIG=/workspace/.gcloud \
   "$TOOLBOX_IMAGE" \
   ${CLI_ARGS[@]+"${CLI_ARGS[@]}"}

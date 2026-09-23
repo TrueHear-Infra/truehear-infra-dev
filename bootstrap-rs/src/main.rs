@@ -2117,8 +2117,7 @@ async fn pivot_install_capi_in_target(
         let mut vars = flux_namespace_vars(&cfg.repo.bootstrap.flux_namespace).await?;
         // Environment overrides are applied on top of the ConfigMap data
         // (issue #72): the merge above is unordered across ConfigMaps, so a
-        // value that differs between the bootstrap cluster and the target
-        // (gcp: GCP_WIF_PROVIDER is `kind` in kind, `mgmt` afterwards) is
+        // value that differs between the bootstrap cluster and the target is
         // forced here rather than left to the unordered ConfigMap merge.
         for (key, value) in &cfg.environment.pivot_manifest_vars {
             vars.insert(key.clone(), value.clone());

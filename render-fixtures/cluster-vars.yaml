@@ -1,7 +1,7 @@
 # Render-only fixture for konflate/flate (offline, no cluster state).
 # The real per-environment ConfigMap/flux-system/cluster-vars lives as a
-# payload inside the flux-instance-<env> ConfigMaps (mgmt/aws/addons,
-# mgmt/gcp/addons) and is delivered to each workload
+# payload inside the flux-instance-<env> ConfigMaps (mgmt/aws/addons) and is
+# delivered to each workload
 # cluster by ApplyOnce ClusterResourceSets. flate cannot see workload
 # cluster state, so this placeholder copy satisfies
 # postBuild.substituteFrom during PR diff rendering. Values are
@@ -21,9 +21,3 @@ data:
   VPC_ID: "REPLACE_AFTER_FIRST_BOOTSTRAP"
   KEYCLOAK_HOSTNAME: "REPLACE_AFTER_FIRST_BOOTSTRAP"
   KEYCLOAK_ACM_CERTIFICATE_ARN: "REPLACE_WITH_ACM_CERT_ARN"
-  GCP_REGION: "europe-north1"
-  GCP_PROJECT: "REPLACE_AFTER_FIRST_BOOTSTRAP"
-  GCP_PROJECT_NUMBER: "000000000000"
-  GCP_NETWORK: "REPLACE_AFTER_FIRST_BOOTSTRAP"
-  GCP_ZONE: "REPLACE_AFTER_FIRST_BOOTSTRAP"
-  STORAGE_ACCOUNT_NAME: "REPLACE_AFTER_FIRST_BOOTSTRAP"
