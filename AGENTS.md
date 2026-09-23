@@ -32,34 +32,6 @@ resources. There is no app source code here, only declarative infrastructure.
   generated encrypted with `mise run truehear-env-secrets -- --env <env>`)
   -> `eu-north-1-<env>/` (sync root with the ordered Flux Kustomizations).
   `tests/test-workload-overlays.py` gates the cross-file invariants.
-- `airgap/`: Zarf offline transfer bundle for the local-host profile.
-  `zarf.yaml` is the authoritative image listing for the package and
-  `images.txt` is the superset inventory (the `scripts/` preloads derive from
-  the same pins); `airgap/tests/test-airgap-ownership.py` (in `mise run
-  validate` and CI) enforces that every `zarf.yaml` image appears in
-  `images.txt` with the identical tag and digest, guarding against partial
-  air-gap updates (issue #228); the CI-only
-  `airgap/tests/test-airgap-kubeadm-images.py` checks the k8s component pins in
-  `images.txt` against real `kubeadm config images list` (`--fix` regenerates them). `scripts/` builds,
-  renders, and stages the bundle (`build-*`, `render-*`, `stage-*`,
-  `offline-run.sh`); `archives/` and `rendered/` are gitignored outputs.
-  Zarf fetches SHA-256-pinned CAAPH release assets and bundles arm64
-  `clusterctl`; its bounded deploy action renders and applies CAAPH from those
-  staged assets (the supported kind-cluster teardown, not `zarf package remove`,
-  removes those resources).
-  Every build is signed and contains Zarf-generated per-component Syft SBOMs.
-  `offline-run.sh` verifies the signature, checksums, and extracted SBOMs
-  before staging; operator builds use `ZARF_SIGNING_KEY` / `ZARF_VERIFY_KEY`,
-  while upstream CI uses GitHub OIDC keyless signing.
-  The `air-gapped` workflow (nightly at 02:17 UTC or manual dispatch, on
-  any repository that carries it) builds the ARM64 bundle on an arm64 runner,
-  then deploys it with external egress blocked (fails if any public traffic
-  was attempted). The deploy evidence artifact is uploaded.
-  The `report-status` job (scheduled runs only) opens or comments on one
-  tracking issue titled "air-gapped: scheduled workflow is failing" when a
-  needed job failed, and closes it when all succeeded; cancelled runs are
-  ignored. `airgap/tests/test-airgap-failure-notification.py` parses the
-  workflow YAML to guard its wiring.
 - `virtualized-e2e/`: WireMock-virtualized e2e harness (issue #355), not
   Flux-reconciled and not wired into a mise task yet (Phase 4). `lib/`
   carries the shared components (WireMock manifest templates under
@@ -105,8 +77,8 @@ resources. There is no app source code here, only declarative infrastructure.
   design; `MISE_AUTO_INSTALL=0` is mandatory for in-toolbox runs and mise's
   `env_file` makes `/workspace/.env` override `-e` values.
 - `renovate.json5`: Renovate config. Dependency versions live in the native
-  files that consume them (mise configs, manifests, workflows, airgap
-  inventory); Renovate discovers and updates them weekly and tracks pending
+  files that consume them (mise configs, manifests, workflows); Renovate
+  discovers and updates them weekly and tracks pending
   updates in the dependency dashboard issue. See `docs/dependencies.md`.
   Edit it only with the dry-run workflow in "Editing renovate.json5" below.
 
@@ -217,20 +189,13 @@ Run locally with Renovate on PATH and Node >= 24.11. These tests
 do not cover lookup liveness or the replacement path; only the
 dry-run and the handlebars simulation cover those.
 
-The digest-pinning, coverage, and release-assets tests all run sequentially
-in the same CI job and their fixtures overlap on `airgap/zarf.yaml`'s
-`kubernetes-sigs/cluster-api*` depNames, so the harness points every run at
+The Renovate grouping tests (actions, kubernetes-version, cluster-api) and
+the coverage test all run sequentially in the same CI job and their
+fixtures overlap on the same `kubernetes-sigs/cluster-api*` depNames, so the
+harness points every run at
 a shared `RENOVATE_CACHE_DIR` (defaulting to a fixed path under the OS temp
 dir): repeat datasource lookups hit Renovate's on-disk cache instead of the
 GitHub API again.
-
-The offline `airgap/tests/test-airgap-image-digests.py` gate is separate from
-Renovate: it scans air-gap inventories and scripts changed by the PR, requires
-readable tags plus SHA-256 digests, and rejects inconsistent repeated
-references within the changed files. Untouched legacy files are not checked.
-It runs in both `mise run validate` and CI and performs no registry lookups.
-Use `python3 airgap/tests/test-airgap-image-digests.py --all` for a full-clone
-audit, including untouched legacy files.
 
 ## Where to look next
 
@@ -243,4 +208,3 @@ Load these only when the task touches their domain:
 - `docs/konflate.md`: rendered PR review, CI gate, tokens, write-back.
 - `docs/aws-iam.md`: management-cluster ACK controllers (static SOPS credentials, union scope), reader roles, reader user.
 - `docs/operations.md`: quotas, configuration, bootstrap, verification.
-- `docs/airgap.md`: Zarf offline bundle for the local-host profile.
