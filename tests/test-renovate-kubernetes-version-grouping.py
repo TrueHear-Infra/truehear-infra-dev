@@ -13,15 +13,6 @@ class KubernetesVersionGroupingTest(unittest.TestCase):
             ("kindest/node", "docker", True),
             # kubectl (mise.toml) resolves to this depName.
             ("kubernetes/kubernetes", "github-releases", True),
-            # airgap/images.txt: images kubeadm actually deploys for the
-            # tracked Kubernetes release (#142 items 3-4).
-            ("registry.k8s.io/kube-apiserver", "docker", True),
-            ("registry.k8s.io/kube-controller-manager", "docker", True),
-            ("registry.k8s.io/kube-proxy", "docker", True),
-            ("registry.k8s.io/kube-scheduler", "docker", True),
-            ("registry.k8s.io/coredns/coredns", "docker", True),
-            ("registry.k8s.io/etcd", "docker", True),
-            ("registry.k8s.io/pause", "docker", True),
             # kind CLI: its own release cadence, not a Kubernetes version.
             ("kubernetes-sigs/kind", "github-releases", False),
             # CAPI/kubeadm providers: grouped separately under "cluster-api".

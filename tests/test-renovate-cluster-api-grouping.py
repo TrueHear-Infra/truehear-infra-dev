@@ -15,8 +15,7 @@ from renovate_harness import apply_package_rules
 class ClusterApiGroupingTest(unittest.TestCase):
     def test_cluster_api_family_and_its_images_group_together(self):
         cases = [
-            # CAPI release/asset lookups (grouped before and after #354)
-            ("kubernetes-sigs/cluster-api", "github-release-attachments", True),
+            # CAPI release lookups (grouped before and after #354)
             ("kubernetes-sigs/cluster-api", "github-releases", True),
             ("kubernetes-sigs/cluster-api-addon-provider-helm", "github-releases", True),
             # must NOT join: no longer managed (gcp profile retired)
@@ -38,7 +37,7 @@ class ClusterApiGroupingTest(unittest.TestCase):
         dependencies = [
             {
                 "depName": name, "packageName": name, "datasource": datasource,
-                "packageFile": "airgap/zarf.yaml",
+                "packageFile": "mgmt/aws/capi-providers/capa-system/providers.yaml",
             }
             for name, datasource, _ in cases
         ]

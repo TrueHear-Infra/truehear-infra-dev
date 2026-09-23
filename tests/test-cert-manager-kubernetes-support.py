@@ -13,10 +13,8 @@ Markdown source that page renders from and parses it, rather than embedding
 a compatibility table here that would silently go stale itself.
 
 Only runs its network check when a change under `--changed-from` touches the
-cert-manager pin (bootstrap.toml) or the Kubernetes pin (the kindest/node
-version in mgmt/local-host/clusters/docker/cluster.yaml, the source
-airgap/tests/test-airgap-kubeadm-images.py also treats as authoritative);
-otherwise it's a no-op, since neither input changed.
+cert-manager pin (bootstrap.toml) or the Kubernetes pin; otherwise it's a
+no-op, since neither input changed.
 """
 
 import argparse

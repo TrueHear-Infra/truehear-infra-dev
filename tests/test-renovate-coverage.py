@@ -36,10 +36,6 @@ EXPECTED = {
     },
     "mise.toml": {"astral-sh/uv"},
     "virtualized-e2e/lib/wiremock/deployment.yaml.tmpl": {"wiremock/wiremock"},
-    "airgap/zarf.yaml": {
-        "kubernetes-sigs/cluster-api",
-        "kubernetes-sigs/cluster-api-addon-provider-helm",
-    },
 }
 
 REQUIRED_SINGLE_REGISTRY = {
