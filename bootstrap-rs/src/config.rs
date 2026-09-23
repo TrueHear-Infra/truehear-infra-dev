@@ -81,8 +81,7 @@ pub struct Environment {
     pub pivot_sops_secrets: Vec<String>,
     /// Mise task run once the kind bootstrap cluster exists (issue #236):
     /// provider-specific setup that must be in place before Flux installs
-    /// anything (azure: Arc OIDC federation so CAPZ/ASO can use workload
-    /// identity instead of a service-principal secret).
+    /// anything (e.g. an OIDC federation hook).
     #[serde(default)]
     pub post_kind_create_task: Option<String>,
     /// Plain (unencrypted) manifests applied to the pivot target before
@@ -181,8 +180,8 @@ pub struct TeardownEnv {
     #[serde(default)]
     pub hardware_release: bool,
     /// Teardown is not automated for this environment: refuse to run and
-    /// print this operator text instead (issue #71, azure until the live
-    /// acceptance run establishes the sweep).
+    /// print this operator text instead (for environments whose orphan
+    /// sweep is not automated).
     #[serde(default)]
     pub manual: Option<String>,
 }

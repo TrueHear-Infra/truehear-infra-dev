@@ -3259,7 +3259,7 @@ mod tests {
         let err = resolve_environment(Some("bogus"), None, &repo).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "unsupported profile 'bogus' (expected 'local-host' or 'aws' or 'local-talos' or 'azure' or 'gcp')"
+            "unsupported profile 'bogus' (expected 'local-host' or 'aws' or 'local-talos' or 'gcp')"
         );
     }
 
@@ -3309,7 +3309,7 @@ mod tests {
             resolve_environment(Some("bogus"), Some("local-host"), &repo)
                 .unwrap_err()
                 .to_string(),
-            "unsupported profile 'bogus' (expected 'local-host' or 'aws' or 'local-talos' or 'azure' or 'gcp')"
+            "unsupported profile 'bogus' (expected 'local-host' or 'aws' or 'local-talos' or 'gcp')"
         );
     }
 
@@ -3470,12 +3470,10 @@ mod tests {
     fn sops_required_when_pivot_secrets_declared() {
         // Environments declaring pivot-sops-secrets need sops on PATH (the
         // pivot decrypts them with the operator's age key); the others
-        // don't. Azure moved to pivot-manifests (issue #236), so it no
-        // longer declares SOPS secrets; build a synthetic environment to
-        // keep proving the rule against the shipped config.
+        // don't. No shipped environment declares SOPS secrets; build a
+        // synthetic environment to keep proving the rule against the
+        // shipped config.
         let repo = repo_config();
-        let azure = required_tools(repo.environment("azure").unwrap());
-        assert!(!azure.contains(&"sops"));
         let aws = required_tools(repo.environment("aws").unwrap());
         assert!(!aws.contains(&"sops"));
 

@@ -52,9 +52,6 @@ EXPECTED = {
     },
     "mise.local-talos.toml": {"siderolabs/talos"},
     "mise.toml": {"astral-sh/uv"},
-    "mgmt/azure/capi-providers/capz-system/providers.yaml": {
-        "kubernetes-sigs/cluster-api-provider-azure",
-    },
     "mgmt/gcp/capi-providers/capg-system/providers.yaml": {
         "kubernetes-sigs/cluster-api-provider-gcp",
     },
@@ -64,7 +61,6 @@ EXPECTED = {
     "mise.gcp.toml": {
         "gcr.io/google.com/cloudsdktool/google-cloud-cli",
     },
-    "mise.azure.toml": {"azure-cli"},
     "virtualized-e2e/lib/wiremock/deployment.yaml.tmpl": {"wiremock/wiremock"},
     "airgap/zarf.yaml": {
         "kubernetes-sigs/cluster-api",
