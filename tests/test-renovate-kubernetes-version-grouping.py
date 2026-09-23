@@ -11,8 +11,7 @@ class KubernetesVersionGroupingTest(unittest.TestCase):
         cases = [
             # kindest/node: local-host node image + topology.version pins.
             ("kindest/node", "docker", True),
-            # kubectl (mise.toml) and the local-talos TalosControlPlane
-            # spec.version annotation both resolve to this depName.
+            # kubectl (mise.toml) resolves to this depName.
             ("kubernetes/kubernetes", "github-releases", True),
             # airgap/images.txt: images kubeadm actually deploys for the
             # tracked Kubernetes release (#142 items 3-4).
@@ -27,7 +26,7 @@ class KubernetesVersionGroupingTest(unittest.TestCase):
             ("kubernetes-sigs/kind", "github-releases", False),
             # CAPI/kubeadm providers: grouped separately under "cluster-api".
             ("kubernetes-sigs/cluster-api", "github-releases", False),
-            # Talos machine-config contract version: Talos's own scheme.
+            # retired local-talos pin: must still not join
             ("siderolabs/talos", "github-releases", False),
             # CAPI-family image, same registry.k8s.io host, must NOT join.
             ("registry.k8s.io/cluster-api/cluster-api-controller", "docker", False),

@@ -13,8 +13,8 @@ proposed updates appear in the Renovate dependency dashboard issue.
 
 Renovate discovers and updates versions in:
 
-- `mise.toml`, `mise.aws.toml`, `mise.local-host.toml`, and
-  `mise.local-talos.toml`: tool pins and the Zarf CLI pin. Explicit per-tool
+- `mise.toml`, `mise.aws.toml`, and `mise.local-host.toml`: tool pins and the
+  Zarf CLI pin. Explicit per-tool
   custom managers replace the native mise manager so each pin resolves against
   the intended upstream project.
 - `pyproject.toml` and `uv.lock`: documentation site dependencies (mkdocs-material,
@@ -66,7 +66,7 @@ images are digest-pinned while retaining readable tags. Nothing automerges.
 The `kubernetes-version` group (#142) covers `kindest/node` (docker datasource:
 the local-host node image and both Cluster `topology.version` pins),
 `kubernetes/kubernetes` (github-releases datasource: the `kubectl` pin in
-`mise.toml` and the local-talos `TalosControlPlane.spec.version` annotation),
+`mise.toml`),
 and the `airgap/images.txt` images kubeadm itself deploys for that release
 (`kube-apiserver`, `kube-controller-manager`, `kube-proxy`, `kube-scheduler`,
 `coredns/coredns`, `etcd`, `pause`, all under the `registry.k8s.io` docker
@@ -79,9 +79,8 @@ drift, and `pause` differs between the two platforms), so a reviewer must
 reconcile them (see the update procedure). Other `registry.k8s.io`
 images (the CAPI/kubeadm provider controllers) are unaffected: they're
 matched by exact depName, not by registry host, and stay in the separate
-`cluster-api` group. The kind CLI and Talos's own `talosVersion`
-machine-config contract version each follow their own release cadence and
-are intentionally excluded from this group.
+`cluster-api` group. The kind CLI follows its own release cadence and is
+intentionally excluded from this group.
 
 cert-manager's Helm chart version and its container image tags used to be
 tracked as separate, ungrouped dependencies. Four separate Renovate PRs

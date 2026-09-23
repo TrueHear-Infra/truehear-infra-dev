@@ -51,8 +51,7 @@ pub struct BootstrapSection {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SyncSource {
-    /// GitRepository against GitHub, authenticated by the PAT secret
-    /// (aws, local-talos).
+    /// GitRepository against GitHub, authenticated by the PAT secret (aws).
     Github,
     /// OCI artifact published from the checkout to the local registry
     /// (local-host).
@@ -172,13 +171,6 @@ pub struct TeardownEnv {
     pub mgmt_eks_cluster_name: Option<String>,
     #[serde(default)]
     pub mgmt_iam_role_prefix: Option<String>,
-    /// Bare-metal semantics (local-talos only, issue #105 scope item 8):
-    /// teardown deletes the CAPI objects so CAPT releases the Tinkerbell
-    /// Hardware back to the pool, but the machine itself is never wiped
-    /// or reclaimed: it is left running Talos for the operator to re-use
-    /// or PXE-boot fresh.
-    #[serde(default)]
-    pub hardware_release: bool,
     /// Teardown is not automated for this environment: refuse to run and
     /// print this operator text instead (for environments whose orphan
     /// sweep is not automated).

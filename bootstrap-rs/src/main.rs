@@ -438,9 +438,7 @@ fn required_tools(env: &Environment) -> Vec<&'static str> {
     // is exercised by the local-host reconciliation watch (Step 5).
     // clusterctl and mise are pivot tools (clusterctl get kubeconfig /
     // describe / move; mise aws-credentials / oci-push) required on
-    // EVERY environment. talosctl is deliberately absent for local-talos:
-    // the machine is remote and talosctl is an operator convenience, not
-    // a bootstrap dependency.
+    // EVERY environment.
     let mut tools = vec!["kind", "helm", "kubectl", "clusterctl", "mise"];
     if env.sync == SyncSource::Oci {
         tools.extend(["flux", "curl"]);
@@ -2965,18 +2963,13 @@ mod tests {
     #[test]
     fn sync_source_is_config_driven() {
         // The FluxInstance sync source comes from bootstrap.toml [environments.*]
-        // (issue #105 scope item 6), not from the profile name: aws and
-        // local-talos sync from GitHub, local-host from the local OCI registry.
+        // (issue #105 scope item 6), not from the profile name: aws syncs from
+        // GitHub, local-host from the local OCI registry.
         let repo = repo_config();
         assert_eq!(
             repo.environment("aws").unwrap().sync,
             SyncSource::Github,
             "aws must declare sync = \"github\""
-        );
-        assert_eq!(
-            repo.environment("local-talos").unwrap().sync,
-            SyncSource::Github,
-            "local-talos must declare sync = \"github\""
         );
         assert_eq!(
             repo.environment("local-host").unwrap().sync,
@@ -2988,17 +2981,12 @@ mod tests {
     #[test]
     fn github_preflight_runs_for_github_sync_environments() {
         // The GitHub/age preflight (PAT, repo branch probe, sops key) is
-        // gated on the sync source, not the aws profile name: local-talos
-        // needs the identical checks. The AWS-only credential steps stay
-        // gated on the profile.
+        // gated on the sync source, not the aws profile name: any github-sync
+        // environment gets the identical checks. The AWS-only credential steps
+        // stay gated on the profile.
         assert!(runs_github_preflight(&Config {
             profile: "aws".into(),
             environment: repo_config().environment("aws").unwrap().clone(),
-            ..teardown_minimal_config()
-        }));
-        assert!(runs_github_preflight(&Config {
-            profile: "local-talos".into(),
-            environment: repo_config().environment("local-talos").unwrap().clone(),
             ..teardown_minimal_config()
         }));
         assert!(!runs_github_preflight(&Config {
@@ -3011,17 +2999,10 @@ mod tests {
     #[test]
     fn required_tools_match_the_sync_surface() {
         // Base tools for every environment; local-host adds the local
-        // reconciliation-watch and oci-push tools. local-talos needs
-        // nothing beyond the base set: the machine is remote (no
-        // localhost rewrite, no oci-push) and talosctl is an operator
-        // convenience, not a bootstrap dependency.
+        // reconciliation-watch and oci-push tools.
         let base = ["kind", "helm", "kubectl", "clusterctl", "mise"];
         assert_eq!(
             required_tools(repo_config().environment("aws").unwrap()),
-            base
-        );
-        assert_eq!(
-            required_tools(repo_config().environment("local-talos").unwrap()),
             base
         );
         let local = required_tools(repo_config().environment("local-host").unwrap());
@@ -3260,7 +3241,7 @@ mod tests {
         let err = resolve_environment(Some("bogus"), None, &repo).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "unsupported profile 'bogus' (expected 'local-host' or 'aws' or 'local-talos')"
+            "unsupported profile 'bogus' (expected 'local-host' or 'aws')"
         );
     }
 
@@ -3310,7 +3291,7 @@ mod tests {
             resolve_environment(Some("bogus"), Some("local-host"), &repo)
                 .unwrap_err()
                 .to_string(),
-            "unsupported profile 'bogus' (expected 'local-host' or 'aws' or 'local-talos')"
+            "unsupported profile 'bogus' (expected 'local-host' or 'aws')"
         );
     }
 

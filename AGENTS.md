@@ -24,31 +24,6 @@ resources. There is no app source code here, only declarative infrastructure.
 - `mgmt/local-host/`: the local-host management variant (kind-based).
   Same layout as `mgmt/aws/` (`clusters/docker`, `capi-providers/`,
   `addons/`, `infrastructure/`) with no cloud dependencies.
-- `mgmt/local-talos/`: the single-node Talos management variant (issue
-  #105). Same component layout as `mgmt/aws/` minus addons
-  (`infrastructure/`, `capi-providers/`, `clusters/management/`), synced
-  from the GitHub GitRepository source like `mgmt/aws`, NOT the laptop OCI
-  registry (a physical machine cannot reach krops-registry). Providers are
-  Talos + Tinkerbell (CABPT/CACPPT from sidero-community releases, CAPT)
-  instead of CAPD; the cluster definition is imperative (explicit
-  controlPlaneRef, no ClusterClass) with committed site-specific values
-  (control plane endpoint IP, Tinkerbell Hardware name). CAPT is pinned to
-  the shrinedogg fork release v0.7.1 (upstream main plus the
-  installer-image annotation mirror, PR tinkerbell#604; see
-  `capi-providers/capt-system/provider.yaml`); re-point at upstream once a
-  release there includes it. The installer image is declared on the
-  TalosConfig through `spec.imageFactory` (CABPT v0.8.x resolves it against
-  the Image Factory API); the committed definition declares no block, so no
-  override is rendered, and the CAPT fork's annotation mirror is no longer
-  consumed by CABPT v0.8.x. The `spec.imageFactory` path is not yet
-  validated live: the #105 hardware acceptance run (done, closed) predates
-  the CABPT bump to v0.8.2, and the PXE/Tinkerbell-Workflow provisioning
-  transport still needs a run (issue #225). Fork retirement is tracked in
-  issue #266, blocked on upstream PR
-  tinkerbell/cluster-api-provider-tinkerbell#604. Scope fence:
-  management-only; no `addons/` (Talos ships its own CNI, no
-  HelmChartProxy consumers). The wiring landed in #169 and the docs in
-  #171; the remaining #105 item is the hardware acceptance run.
 - `workload/`: synced by each WORKLOAD cluster's Flux. Layering:
   `base/` (vendored TrueHear service roots and charts from
   truehear-cloud-development, byte-identical, never edited in place;
@@ -263,7 +238,7 @@ Load these only when the task touches their domain:
 
 - `docs/architecture.md`: reconciliation order, how workload apps are delivered.
 - `docs/bootstrap-cli.md`: the `krops-bootstrap` Rust CLI: interface, env knobs, pivot, parity status.
-- `docs/extending.md`: adding a workload cluster, adding apps, adding other providers (Talos, k0smotron).
+- `docs/extending.md`: adding a workload cluster, adding apps, adding other providers.
 - `docs/secrets.md`: SOPS + age setup, credential rotation.
 - `docs/konflate.md`: rendered PR review, CI gate, tokens, write-back.
 - `docs/aws-iam.md`: management-cluster ACK controllers (static SOPS credentials, union scope), reader roles, reader user.

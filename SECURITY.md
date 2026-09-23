@@ -26,7 +26,7 @@ Include:
 - Steps to reproduce, or the reasoning if reproduction needs cloud
   resources you cannot provision.
 - Impact as you understand it: what an attacker gains and which
-  environment (`aws`, `local-host`, `local-talos`) is affected.
+  environment (`aws` or `local-host`) is affected.
 
 You will get an acknowledgement within 7 days. Maintainers volunteer their
 time; there is no paid response team and no bug bounty. Please allow up to
@@ -61,8 +61,8 @@ In scope:
 Out of scope:
 
 - Vulnerabilities in upstream projects the repository consumes (Flux,
-  Cluster API and its providers, ACK controllers, konflate, Zarf, Talos,
-  Tinkerbell, kind). Report those upstream; a report here is welcome only
+  Cluster API and its providers, ACK controllers, konflate, Zarf,
+  kind). Report those upstream; a report here is welcome only
   if krops configures the component in a way that makes the issue worse
   or bypasses a mitigation.
 - The AWS service side (EKS, IAM, S3, RDS) itself.

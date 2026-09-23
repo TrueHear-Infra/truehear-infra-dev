@@ -207,7 +207,6 @@ run = '''
 if [ -z "${MGMT_CLUSTER:-}" ]; then
   case "${KROPS_PROFILE:-aws}" in
     local-host) MGMT_CLUSTER=local-management;;
-    local-talos) MGMT_CLUSTER=local-talos-management;;
     *) MGMT_CLUSTER=eu-north-1-management;;
   esac
 fi

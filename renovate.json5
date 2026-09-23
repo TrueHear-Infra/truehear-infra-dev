@@ -206,16 +206,6 @@
       "extractVersionTemplate": "^v(?<version>.+)",
       "autoReplaceStringTemplate": "clusterawsadm = { version = \"{{newValue}}\""
     },
-    {
-      "customType": "regex",
-      "description": "mise: talosctl pin (local-talos environment layer, issue #105)",
-      "managerFilePatterns": ["/(^|/)mise\\.local-talos\\.toml$/"],
-      "matchStrings": ["talosctl = \"(?<currentValue>[^\"]+)\""],
-      "depNameTemplate": "siderolabs/talos",
-      "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^v(?<version>.+)",
-      "autoReplaceStringTemplate": "talosctl = \"{{newValue}}\""
-    },
     // ── bootstrap.toml chart pins (annotation-driven) ─────────────────────
     // Datasource and depName live in `# renovate:` comments next to the
     // chart pins in bootstrap.toml (consumed by the Rust binary since the
@@ -229,27 +219,6 @@
         "# renovate: datasource=(?<datasource>[a-z0-9-]+)(?: registryUrl=(?<registryUrl>\\S+))? depName=(?<depName>\\S+)(?: versioning=(?<versioning>[a-z0-9-]+))?\\n(?<depKey>[a-zA-Z0-9_-]+) = \\\"(?<currentValue>[^\\\"]+)\\\""
       ],
       "autoReplaceStringTemplate": "# renovate: datasource={{{datasource}}}{{#if registryUrl}} registryUrl={{{registryUrl}}}{{/if}} depName={{{depName}}}{{#if versioning}} versioning={{{versioning}}}{{/if}}\n{{{depKey}}} = \"{{{newValue}}}\""
-    },
-    {
-      "customType": "regex",
-      "description": "Annotated version pins in local-talos manifests (#157)",
-      "managerFilePatterns": ["/(^|/)mgmt/local-talos/.+\\.ya?ml$/"],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z0-9-]+) depName=(?<depName>\\S+)\\n\\s{2,}version: \\\"v(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "extractVersionTemplate": "^v(?<version>.+)",
-      "autoReplaceStringTemplate": "# renovate: datasource={{{datasource}}} depName={{{depName}}}\n  version: \"v{{{newValue}}}\""
-    },
-    {
-      "customType": "regex",
-      "description": "local-talos talosVersion machine-config contract pin (#157)",
-      "managerFilePatterns": ["/(^|/)mgmt/local-talos/clusters/management/cluster\\.yaml$/"],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z0-9-]+) depName=(?<depName>siderolabs/talos)\\n\\s+talosVersion: v(?<currentValue>[0-9]+\\.[0-9]+)"
-      ],
-      "extractVersionTemplate": "^v(?<version>\\d+\\.\\d+)",
-      "versioningTemplate": "loose",
-      "autoReplaceStringTemplate": "# renovate: datasource={{{datasource}}} depName={{{depName}}}\n      talosVersion: v{{{newValue}}}"
     },
     {
       "customType": "regex",
@@ -285,9 +254,9 @@
     // ── clusterctl operator provider manifests ───────────────────────────
     {
       "customType": "regex",
-      "description": "CAPI core, kubeadm, and CAPD provider versions (aws, local-host, local-talos)",
+      "description": "CAPI core, kubeadm, and CAPD provider versions (aws, local-host)",
       "managerFilePatterns": [
-        "/(^|/)mgmt/(aws|local-host|local-talos)/capi-providers/(capi-system|capd-system)/.+\\.ya?ml$/"
+        "/(^|/)mgmt/(aws|local-host)/capi-providers/(capi-system|capd-system)/.+\\.ya?ml$/"
       ],
       "matchStrings": ["\\s{2}version: \"v(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "kubernetes-sigs/cluster-api",

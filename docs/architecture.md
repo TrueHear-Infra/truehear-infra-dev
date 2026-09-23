@@ -6,8 +6,7 @@ bootstraps [Flux](https://fluxcd.io/), provisions the self-managed management
 cluster through CAPI, and is deleted after a `clusterctl move` pivot. The
 management cluster then reconciles itself and all downstream infrastructure from
 this repository across multiple supported environments: AWS (`aws`),
-local Docker (`local-host`), bare-metal Talos
-(`local-talos`), and an air-gapped bundle (`airgap`).
+local Docker (`local-host`), and an air-gapped bundle (`airgap`).
 
 The operator normally runs the imperative lifecycle through the
 `krops-toolbox` container. It mounts the host engine socket, joins the kind
@@ -234,83 +233,6 @@ cert-manager ▶ capi-operator ▶ capi-system ▶ capd-system ▶ clusters (loc
 Workload cluster:
 ```
 podinfo (HelmRelease reconciled by local workload Flux from OCI artifact)
-```
-
-## Bare-metal Talos environment (local-talos)
-
-The `local-talos` environment targets physical bare metal: a disposable kind
-cluster installs CAPI with the Tinkerbell infrastructure provider (CAPT pinned
-to fork v0.7.1) and Talos bootstrap/control-plane providers (CABPT v0.8.2,
-CACPPT v0.7.1). The controllers match a committed Tinkerbell Hardware object
-(`talos-mgmt-01`), PXE-boot the target machine, and bring up an immutable
-single-node control plane. The installer image is declared on the
-`TalosConfig` through `spec.imageFactory` (resolved by CABPT v0.8.x against
-the Image Factory API); the committed definition declares no block, so no
-installer-image override is rendered.
-
-Scope fence: `local-talos` is management-only. It owns no workload clusters and
-deploys no CAPI addons (Talos ships its own internal CNI). Teardown deletes the
-CAPI objects so CAPT releases the Hardware back to the Tinkerbell pool; the
-physical machine is never wiped or reclaimed.
-
-See the architecture diagram in [docs/local-talos-infra.svg](local-talos-infra.svg).
-
-![krops local-talos architecture](local-talos-infra.svg)
-
-```mermaid
-flowchart TD
-    subgraph bootstrap["Bootstrap (one-time, krops-bootstrap CLI)"]
-        KIND[kind cluster: mgmt, disposable]
-        HELM[Helm: flux-operator + FluxInstance]
-        SEC[Secrets: flux-github-pat + sops-age]
-        KIND --> HELM
-        KIND --> SEC
-    end
-
-    subgraph git["Git: github.com/polarsquad/krops"]
-        REPO[(main branch)]
-    end
-
-    HELM -->|"sync: mgmt/local-talos/"| REPO
-
-    subgraph mgmt["Management cluster (bare metal, self-managed after pivot)"]
-        FS[flux-system root]
-        CM[cert-manager]
-        CO[capi-operator]
-        CAPIS[capi-system]
-        CAPT["capt-system (Tinkerbell CAPT v0.7.1 fork)"]
-        CABPT["cabpt-system (Talos bootstrap v0.8.2)"]
-        CACPPT["cacppt-system (Talos control plane v0.7.1)"]
-        TALOSMGMT["clusters/management<br/>talos-mgmt-01 (explicit controlPlaneRef)"]
-
-        FS --> CM --> CO --> CAPIS
-        CAPIS --> CAPT
-        CAPIS --> CABPT
-        CAPIS --> CACPPT
-        CAPT --> TALOSMGMT
-        CABPT --> TALOSMGMT
-        CACPPT --> TALOSMGMT
-    end
-
-    REPO --> FS
-
-    subgraph metal["Physical Metal (Tinkerbell Substrate)"]
-        HW["Tinkerbell Hardware: talos-mgmt-01<br/>committed MAC / BMC credentials"]
-        PXE["PXE network boot + Hook environment"]
-        IMG["Talos installer image streamed to disk"]
-        NODE["Single-node bare metal control plane<br/>static VIP / Talos API"]
-    end
-
-    TALOSMGMT -->|CAPT claims| HW
-    HW --> PXE --> IMG --> NODE
-```
-
-### Reconciliation order (local-talos)
-
-```
-cert-manager ▶ capi-operator ▶ capi-system ▶ capt-system (Tinkerbell CAPT) ──┐
-                                           ├▶ cabpt-system (Talos bootstrap) ─┼▶ clusters/management (talos-mgmt-01)
-                                           └▶ cacppt-system (Talos CP) ───────┘
 ```
 
 ## Air-gapped bundle (airgap)

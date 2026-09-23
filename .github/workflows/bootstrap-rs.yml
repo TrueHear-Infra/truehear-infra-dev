@@ -109,7 +109,7 @@ jobs:
             for task in sops-keygen sops-encrypt sops-decrypt sops-updatekeys mgmt-kubeconfig aws-credentials validate; do
               mise tasks ls 2>/dev/null | grep -q "^$task " || { echo "::error::mise task $task not visible from /workspace"; exit 1; }
             done
-            for env in aws local-host local-talos; do
+            for env in aws local-host; do
               mise -E "$env" tasks ls 2>/dev/null | grep -q "^kubeconfigs " || { echo "::error::mise -E $env kubeconfigs task not visible"; exit 1; }
             done
             mise -E aws which clusterawsadm >/dev/null || { echo "::error::mise -E aws cannot resolve clusterawsadm without installing"; exit 1; }'

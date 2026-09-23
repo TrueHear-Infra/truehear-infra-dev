@@ -20,9 +20,8 @@ platform APIs. krops introduces no krops-specific CRD or controller: it combines
 for GitOps. If those resource APIs already say what you mean, krops does not
 wrap them to say it again.
 
-This repository demonstrates the pattern end to end on AWS EKS,
-local Docker clusters, and a Tinkerbell-provisioned
-[Talos Linux](https://www.talos.dev/) machine. A disposable
+This repository demonstrates the pattern end to end on AWS EKS and
+local Docker clusters. A disposable
 [kind](https://kind.sigs.k8s.io/) cluster bootstraps Flux,
 CAPI pivots control to a self-managed management cluster, and the Rust
 [`krops-bootstrap`](docs/bootstrap-cli.md) CLI handles bootstrap, pivot, and
@@ -86,11 +85,7 @@ teardown, cloud preparation, SOPS key work, kubeconfig exports, or
 environment below.
 
 The `aws` environment additionally requires a GitHub PAT with read access,
-AWS credentials and service quotas, and an age private key. The
-`local-talos` environment needs the PAT and age key too (it syncs from
-GitHub), plus a reachable Tinkerbell stack and the site values in
-`mgmt/local-talos/clusters/management/cluster.yaml`; see
-[Operations](docs/operations.md).
+AWS credentials and service quotas, and an age private key.
 
 Two steps stay host-side on purpose and use [mise](https://mise.jdx.dev/):
 `mise run validate` (repository development) and
@@ -136,7 +131,7 @@ helper tasks run the same image with `--entrypoint mise`:
 ```sh
 docker build -f bootstrap-rs/Dockerfile -t krops-toolbox:dev .
 export TOOLBOX_IMAGE=krops-toolbox:dev
-cp .env.example .env        # aws and local-talos: fill in the Git source and PAT
+cp .env.example .env        # aws: fill in the Git source and PAT
 docker run --rm -it --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -v "$PWD:/workspace" -w /workspace -e MISE_AUTO_INSTALL=0 \
   --entrypoint mise "$TOOLBOX_IMAGE" run sops-keygen   # first time only: age key for SOPS
@@ -154,7 +149,7 @@ in their native consumer files and update PRs open weekly. See
 
 ### Environments
 
-Three management environments share one shape: a disposable kind bootstrap
+Two management environments share one shape: a disposable kind bootstrap
 cluster runs Flux, a CAPI infrastructure provider builds the self-managed
 management cluster, the pivot moves the management objects into it, and the
 management cluster then reconciles itself and its workload clusters from this
@@ -165,7 +160,6 @@ layers its own tools and tasks in a `mise.<env>.toml`.
 |---|---|---|---|---|
 | `aws` | EKS `eu-north-1-management` | CAPA | ACK (IAM, EKS) | GitHub |
 | `local-host` | CAPD `local-management` (Docker) | CAPD | Flux + Podinfo | local OCI registry |
-| `local-talos` | single-node Talos on bare metal | CAPT + CABPT + CACPPT | none (management-only) | GitHub |
 
 Each environment has its own reference page; the ones below summarize it and
 link to the full guide.
@@ -249,31 +243,6 @@ Teardown deletes the CAPD workload cluster first, then the pre-pivot kind
 cluster or the post-pivot self-managed management containers, and removes the
 local registry last.
 
-#### Local Talos
-
-Targets a physical machine through Tinkerbell: a PXE install of Talos Linux,
-then the same bootstrap, pivot, and self-management flow, synced from GitHub.
-Scope fence: management-only, no workload clusters. It needs the GitHub PAT
-and age key, a reachable Tinkerbell stack with a `Hardware` resource for the
-machine, and the site values in
-`mgmt/local-talos/clusters/management/cluster.yaml`. The hardware acceptance
-run (issue #105) has been executed end to end on operator-owned hardware; the
-documented PXE/Tinkerbell-Workflow provisioning transport still needs a live
-run (issue #225).
-
-![krops local-talos architecture](docs/local-talos-infra.svg)
-
-```sh
-scripts/toolbox-run.sh bootstrap local-talos
-export KUBECONFIG="$PWD/.kube/krops-mgmt.yaml"   # written by the pivot; the machine is reached directly
-kubectl get nodes
-scripts/toolbox-run.sh teardown local-talos  # releases the Hardware; never wipes the machine
-```
-
-`talosctl` (`mise.local-talos.toml`) is an operator convenience for the
-machine itself, not a lifecycle dependency; install it on the host with
-`mise -E local-talos install` if you want it.
-
 #### Air-gapped local host
 
 The `local-host` profile packaged with [Zarf](https://zarf.dev) for
@@ -315,7 +284,7 @@ teardown controls, toolbox release, and current parity status.
 | [docs/konflate.md](docs/konflate.md) | Rendered Flux PR review: GitHub Actions gate, in-cluster instance, write-back to PRs, tokens |
 | [docs/secrets.md](docs/secrets.md) | SOPS + age secret management, key setup, credential rotation |
 | [docs/operations.md](docs/operations.md) | Toolbox runtime, prerequisites, quotas, bootstrap, pivot recovery, teardown, validation |
-| [docs/extending.md](docs/extending.md) | Adding a workload cluster, adding apps to the workload clusters, adding other providers (Talos, k0smotron) |
+| [docs/extending.md](docs/extending.md) | Adding a workload cluster, adding apps to the workload clusters, adding other providers |
 | [docs/airgap.md](docs/airgap.md) | Zarf air-gap bundle: package build, offline deploy, verification checklist, update drill |
 | [docs/proposals/](docs/proposals/README.md) | Design proposals under review (not yet decided or implemented) |
 
@@ -367,13 +336,6 @@ teardown controls, toolbox release, and current parity status.
 │   ├── capi-providers/           caaph-system, capd-system, capi-system
 │   ├── addons/                   kindnet CNI, flux-apps
 │   └── clusters/                 docker (workload), management (self-managed)
-├── mgmt/local-talos/             Single-node Talos management cluster on
-│   │                              bare metal via Tinkerbell (CAPT);
-│   │                              GitHub-synced like mgmt/aws
-│   ├── infrastructure/           capi-operator, cert-manager
-│   ├── capi-providers/           cabpt-system, cacppt-system, capi-system,
-│   │                              capt-system (Tinkerbell)
-│   └── clusters/                 management (self-managed)
 └── workload/                     Synced by each WORKLOAD cluster's Flux
     ├── base/                     TrueHear service roots and vendored charts
     │                              (keycloak, truehear-platform, redis/chart,
