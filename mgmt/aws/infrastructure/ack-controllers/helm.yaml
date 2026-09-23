@@ -64,9 +64,9 @@ spec:
     tag: "1.23.1"
 ---
 # ACK EKS controller: reconciles the PodIdentityAssociation CRs in
-# mgmt/aws/infrastructure/dev-pod-identity/ against the dev EKS cluster.
-# It never creates clusters or nodegroups here (CAPA owns those); see
-# docs/aws-iam.md for the actions the static principal needs.
+# mgmt/aws/infrastructure/staging-pod-identity/ against the staging EKS
+# cluster. It never creates clusters or nodegroups here (CAPA owns those);
+# see docs/aws-iam.md for the actions the static principal needs.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:

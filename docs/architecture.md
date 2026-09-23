@@ -54,11 +54,10 @@ flowchart TD
         CAPAS["capa-system (SOPS creds)"]
         CAAPH[caaph-system]
         ACKC["ack-controllers (SOPS creds)<br/>ACK IAM + EKS controllers"]
-        DEVPI["dev-pod-identity<br/>truehear-dev-* roles + associations"]
         STGPI["staging-pod-identity<br/>truehear-staging-* roles + associations"]
         AWSIAM["aws-global-iam<br/>krops-reader console user"]
         KONF["konflate (SOPS token)<br/>rendered Flux PR review"]
-        EUN[eu-north-1 cluster defs<br/>management + dev + staging]
+        EUN[eu-north-1 cluster defs<br/>management + staging]
         FA["flux-apps (SOPS pull secret)<br/>HelmChartProxy + per-env ClusterResourceSets"]
 
         FS --> CM --> CO
@@ -66,8 +65,7 @@ flowchart TD
         CO --> CAPIS --> CAPAS --> CAAPH --> FA
         CAPAS --> EUN
         CAPAS --> MGMT
-        FS --> ACKC --> DEVPI
-        ACKC --> STGPI
+        FS --> ACKC --> STGPI
         ACKC --> AWSIAM
         FS --> KONF
     end
@@ -76,34 +74,24 @@ flowchart TD
 
     subgraph aws["AWS: eu-north-1"]
         EKS0[EKS: eu-north-1-management<br/>2 x t4g.medium (self-managed)]
-        EKS1[EKS: eu-north-1-dev<br/>3 x t3.medium, one VPC]
         EKS2[EKS: eu-north-1-staging<br/>3 x t3.medium, one VPC]
-        DROLES[IAM Roles: truehear-dev-*<br/>trust: pods.eks.amazonaws.com (Pod Identity)]
         SROLES[IAM Roles: truehear-staging-*<br/>trust: pods.eks.amazonaws.com (Pod Identity)]
         RUSER[IAM User: krops-reader<br/>console login, assumes truehear-* roles]
     end
 
     EUN -->|CAPA provisions| EKS0
-    EUN -->|CAPA provisions| EKS1
     EUN -->|CAPA provisions| EKS2
     AWSIAM -->|creates| RUSER
-    RUSER -.->|sts:AssumeRole| DROLES
     RUSER -.->|sts:AssumeRole| SROLES
-    DEVPI -->|ACK creates on the mgmt cluster| DROLES
     STGPI -->|ACK creates on the mgmt cluster| SROLES
 
-    FA -->|"HelmChartProxy: flux-operator<br/>CRS: FluxInstance + cluster-vars + pull secret"| WF1
-    FA -->|same, per environment label| WF2
+    FA -->|"HelmChartProxy: flux-operator<br/>CRS: FluxInstance + cluster-vars + pull secret"| WF2
 
-    subgraph wl1["Workload cluster eu-north-1-dev"]
-        WF1["Flux (sync: workload/eu-north-1-dev)<br/>platform + environments/dev overlay"]
-    end
 
     subgraph wl2["Workload cluster eu-north-1-staging"]
         WF2["Flux (sync: workload/eu-north-1-staging)<br/>platform + environments/staging overlay"]
     end
 
-    WF1 --> REPO
     WF2 --> REPO
 ```
 
@@ -115,7 +103,6 @@ Enforced with Flux `dependsOn`:
 cert-manager ▶ capi-operator ▶ capi-system ▶ capa-system ▶ clusters (eu-north-1)
                             │                            └▶ caaph-system ▶ flux-apps
                             └▶ capa-identity ▶ aws-managed-clusters
-ack-controllers ▶ dev-pod-identity
 ack-controllers ▶ staging-pod-identity
 ack-controllers ▶ aws-global-iam
 konflate (no dependencies)
@@ -153,15 +140,14 @@ truehear-platform; vault, redis, rabbitmq are HelmReleases, keycloak is a
 plain manifest overlay). Environment-neutral service roots and charts come
 from workload/base, composed through the environment overlay
 (workload/environments/<env>), never directly. The sync root
-workload/eu-north-1-staging declares the six Flux Kustomizations; the dev
-overlay and sync root are placeholders in this repo.
+workload/eu-north-1-staging declares the six Flux Kustomizations.
 ```
 
 ### How workload apps are delivered (AWS)
 
 1. Each `Cluster` in `mgmt/aws/clusters/` carries the labels `fluxcd:
    enabled`, `region: <region>`, and `environment: <env>` (the TrueHear
-   clusters, `eu-north-1-dev` and `eu-north-1-staging`).
+   cluster, `eu-north-1-staging`).
 2. `flux-apps` matches those labels: a **HelmChartProxy** installs the Flux
    Operator on every workload cluster, and per-environment
    **ClusterResourceSets** apply a `FluxInstance` (syncing
@@ -173,8 +159,7 @@ overlay and sync root are placeholders in this repo.
 3. The workload cluster's Flux reconciles its sync root, whose Flux
    Kustomizations point at `workload/platform` and the environment overlay
    (which composes `workload/base`). The `eu-north-1-staging` sync root
-   exists and reconciles the full stack; the dev sync root is a placeholder
-   until the dev overlay lands. Adding an app to the layering is documented
+   exists and reconciles the full stack. Adding an app to the layering is documented
    in [Extending](./extending.md).
 
 See [AWS authentication & IAM](./aws-iam.md) for how the ACK controllers

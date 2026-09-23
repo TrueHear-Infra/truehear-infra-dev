@@ -4,8 +4,8 @@
 # (truehear-cloud-development README: "mirror prod, lesser hardware"): one
 # workload cluster in eu-north-1, three x86 workers across three AZs on the
 # CAPA-managed private subnets, encrypted gp3 root disks, IMDSv2 (EKS default
-# for AL2023 managed node groups), the same add-on set and platform
-# controllers as dev. The `environment` label selects the staging
+# for AL2023 managed node groups), and the platform
+# controllers. The `environment` label selects the staging
 # FluxInstance ConfigMap (mgmt/aws/addons/flux-apps/flux-instance.yaml).
 #
 # What differs from prod is only the worker instance type and scaling floor;
@@ -40,7 +40,7 @@ spec:
 # ── EKS Managed Control Plane ────────────────────────────────────────────────
 # CAPA reconciles spec.addons as the COMPLETE desired set: an installed
 # add-on absent from this list is deleted (pkg/eks/addons/plan.go). Keep
-# every add-on the staging cluster needs here, identical to dev so the two
+# every add-on the staging cluster needs here, identical to prod so the two
 # environments drift only where cluster.yaml says so. eks-pod-identity-agent
 # is required by the Pod Identity associations declared in
 # mgmt/aws/infrastructure/staging-pod-identity/; aws-ebs-csi-driver binds its

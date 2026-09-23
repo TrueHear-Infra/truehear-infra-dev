@@ -209,6 +209,21 @@ def main() -> int:
                     f"{expected_eks}"
                 )
 
+    # Every AWS sweep target must be a BUILT environment level: the overlay
+    # workload/environments/<env>/kustomization.yaml exists. A placeholder
+    # README alone is not an environment (dev was removed for this reason).
+    aws_env = config.get("environments", {}).get("aws", {})
+    for workload in aws_env.get("teardown", {}).get("aws-workloads", []):
+        cluster_name = workload.get("cluster-name", "")
+        region = workload.get("region", "")
+        level = cluster_name[len(region) + 1:] if cluster_name.startswith(region + "-") else ""
+        overlay = REPO_ROOT / "workload" / "environments" / level / "kustomization.yaml"
+        if level and not overlay.is_file():
+            failures.append(
+                f"environments.aws teardown target {cluster_name!r} has no overlay "
+                f"workload/environments/{level}/kustomization.yaml"
+            )
+
     # Global teardown constants pin to the manifests that define them.
     teardown = config.get("teardown", {})
     if teardown:

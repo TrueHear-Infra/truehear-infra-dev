@@ -4,8 +4,8 @@
 
 This repository runs the TrueHear workload application (Keycloak with its
 PostgreSQL, Vault, Redis, RabbitMQ, and the backend service) on EKS clusters
-in eu-north-1. There are three environment levels: `dev`, `staging`, and
-`prod`. Dev and staging are defined in this repository; prod has no defined
+in eu-north-1. There are two environment levels: `staging` and
+`prod`. Staging is defined in this repository; prod has no defined
 size yet (the placeholder lives in `workload/environments/prod/README.md`).
 
 The upstream rule is "mirror prod, lesser hardware": every environment runs
@@ -48,7 +48,6 @@ pins that order and the per-root invariants.
 
 | Environment | Cluster name | Instance type | Min/max nodes | Keycloak hostname | Sync root | FluxInstance ConfigMap |
 |---|---|---|---|---|---|---|
-| dev | `eu-north-1-dev` | `t3.medium` | 3 / 4 | `auth.dev.truehearkiosk.com` | `workload/eu-north-1-dev` (placeholder in this repo) | `flux-instance-dev` |
 | staging | `eu-north-1-staging` | `t3.medium` | 3 / 4 | `auth.staging.truehearkiosk.com` | `workload/eu-north-1-staging` | `flux-instance-staging` |
 | prod | undefined | undefined | undefined | undefined | undefined | undefined |
 
@@ -61,7 +60,7 @@ matching ClusterResourceSets are in
 
 ## What runs where
 
-The full stack is identical in dev and staging. This table is the sizing
+The full stack is the reference sizing. This table is the sizing
 source of truth (it comes from the plan's sizing facts, which the workers
 must not change):
 

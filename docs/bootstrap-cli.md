@@ -251,7 +251,7 @@ management cluster to be removed.
   keeps running Talos for the operator. `AWS_ONLY=1` is rejected because
   there is no AWS orphan sweep for operator-owned hardware.
 - `aws`: suspend Flux, delete and wait for workload CAPI clusters, run the AWS
-  orphan sweep per environment-level target (dev and staging) plus the
+  orphan sweep per environment-level target (staging) plus the
   self-managed management cluster, remove CAPI providers and bootstrap Helm
   releases when the controller host is still reachable, and enforce the
   controller-host deletion guard. The sweep covers nodegroups, EKS clusters,

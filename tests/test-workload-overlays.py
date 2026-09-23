@@ -164,14 +164,20 @@ def main() -> int:
             failures.append(f"kubectl kustomize workload/{root.name} does not render {EXPECTED_KS}")
 
     instance_text = FLUX_INSTANCE.read_text()
-    for env_dir in sorted((REPO_ROOT / "workload" / "environments").iterdir()):
-        if not env_dir.is_dir() or not (env_dir / "kustomization.yaml").is_file():
-            continue
-        env = env_dir.name
+    built_envs = sorted(
+        d.name for d in (REPO_ROOT / "workload" / "environments").iterdir()
+        if d.is_dir() and (d / "kustomization.yaml").is_file()
+    )
+    for env in built_envs:
         if not (REPO_ROOT / "workload" / f"eu-north-1-{env}").is_dir():
             failures.append(f"workload/environments/{env}: no workload/eu-north-1-{env} sync root")
         if f"  name: flux-instance-{env}\n" not in instance_text:
             failures.append(f"flux-instance.yaml: no flux-instance-{env} ConfigMap")
+    # Reverse direction: every flux-instance-<env> ConfigMap needs a built
+    # overlay; a ConfigMap for an unbuilt environment is dead management state.
+    for env in sorted(set(re.findall(r"^  name: flux-instance-([a-z0-9-]+)$", instance_text, re.M))):
+        if env not in built_envs:
+            failures.append(f"flux-instance.yaml: flux-instance-{env} has no built workload/environments/{env}")
 
     rendered = {}
     for rel in FLUX_ROOTS:

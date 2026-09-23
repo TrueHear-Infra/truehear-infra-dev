@@ -53,8 +53,6 @@ cfn-stack-name = "cluster-api-provider-aws-sigs-k8s-io"
 # cluster's platform controllers, created by the management cluster's ACK IAM
 # controller (mgmt/aws/infrastructure/<env>-pod-identity/roles.yaml).
 global-iam-roles = [
-  "truehear-dev-ebs-csi",
-  "truehear-dev-aws-load-balancer-controller",
   "truehear-staging-ebs-csi",
   "truehear-staging-aws-load-balancer-controller",
 ]
@@ -129,12 +127,6 @@ mgmt-iam-role-prefix = "eu-north-1-management"
 # rds-instance is a required field of the sweep target; this repo declares no
 # RDS instance, so the value names an identifier that never exists and the
 # sweep reports "not found" for it.
-[[environments.aws.teardown.aws-workloads]]
-region = "eu-north-1"
-cluster-name = "eu-north-1-dev"
-eks-cluster-name = "default_eu-north-1-dev-control-plane"
-rds-instance = "krops-eu-north-1-dev-db"
-
 [[environments.aws.teardown.aws-workloads]]
 region = "eu-north-1"
 cluster-name = "eu-north-1-staging"
