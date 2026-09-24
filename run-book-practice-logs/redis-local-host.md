@@ -103,10 +103,10 @@ workload/local-host/redis/
 └── flux-ks.yaml
 ```
 
-| File                          | Purpose                         |
-| ----------------------------- | ------------------------------- |
+| File                            | Purpose                         |
+| ------------------------------- | ------------------------------- |
 | `chart/`                      | TrueHear-owned Helm chart.      |
-| `chart-source.yaml`           | Selects chart version `0.3.0`.  |
+| `chart-source.yaml`           | Selects chart version`0.3.0`. |
 | `helmrelease.yaml`            | Sets nodes, storage, and ACLs.  |
 | `redis-tls.sops.yaml`         | Encrypted TLS material.         |
 | `redis-auth.sops.yaml`        | Encrypted default auth.         |
@@ -293,8 +293,8 @@ This command does not print the private key.
 
 Redis uses two encrypted authentication manifests:
 
-| Secret              | Key               | Purpose                 |
-| ------------------- | ----------------- | ----------------------- |
+| Secret                | Key                 | Purpose                 |
+| --------------------- | ------------------- | ----------------------- |
 | `redis-auth`        | `redis-auth.conf` | Admin and replica auth. |
 | `redis-backend-acl` | `users.conf`      | Restricted backend ACL. |
 

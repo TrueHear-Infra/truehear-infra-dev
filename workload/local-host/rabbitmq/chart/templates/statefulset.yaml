@@ -88,6 +88,13 @@ spec:
           command: ["/bin/sh", "-ec"]
           args:
             - |
+              # The emptyDir survives a container restart. Remove files from
+              # the previous init run before recreating them.
+              rm -f \
+                /etc/rabbitmq/rabbitmq.conf \
+                /etc/rabbitmq/enabled_plugins \
+                /etc/rabbitmq/inter_node_tls.config \
+                /etc/rabbitmq/rabbitmq-env.conf
               cp /config-source/rabbitmq.conf /etc/rabbitmq/rabbitmq.conf
               cp /config-source/enabled_plugins /etc/rabbitmq/enabled_plugins
               cp /config-source/inter_node_tls.config /etc/rabbitmq/inter_node_tls.config

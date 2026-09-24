@@ -7,5 +7,5 @@ spec:
   interval: 1h
   url: oci://krops-registry:5000/charts/truehear-rabbitmq
   ref:
-    tag: "0.1.0"
+    tag: "0.1.1"
   insecure: true
