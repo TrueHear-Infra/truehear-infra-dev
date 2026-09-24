@@ -68,9 +68,13 @@ RUN apt-get update \
 
 # The repository is mounted at /workspace at run time; mise runs from the
 # working directory with both env layers available (aws tools per the #104
-# decision: one image, credentials arrive at runtime).
+# decision: one image, credentials arrive at runtime). The toolbox is
+# non-interactive, so the AWS CLI's default `less` pager (issue #31) is
+# disabled instead of shipping a pager package; an operator-supplied value
+# via -e still wins at runtime.
 ENV MISE_DATA_DIR=/usr/local/share/mise \
     MISE_YES=1 \
+    AWS_PAGER="" \
     PATH=/usr/local/share/mise/shims:/usr/local/bin:/usr/bin:/sbin:/bin
 
 COPY --from=build /usr/local/bin/krops-bootstrap /usr/local/bin/krops-bootstrap
