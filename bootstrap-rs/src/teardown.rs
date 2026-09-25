@@ -1952,9 +1952,10 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
                 ">>> Deleting kind management cluster '{}'...",
                 cfg.repo.bootstrap.kind_cluster
             );
-            // Toolbox runs must leave the kind network first: kind removes
-            // the network with the last node, and an attached toolbox
-            // container would keep it alive.
+            // Toolbox runs must leave the kind network first: kind 0.33.0's
+            // delete removes the node containers but not the Docker network,
+            // so the leave is detach hygiene so the toolbox container is not
+            // attached when the nodes go away.
             if cfg.toolbox {
                 if let Some(engine) = engine.as_deref() {
                     toolbox_leave_kind_network(cfg, engine).await;
@@ -2164,6 +2165,18 @@ pub async fn run_teardown(cfg: &Config, tcfg: &TeardownConfig) -> Result<()> {
                 ControllerHost::Kind => {
                     let name = cfg.repo.bootstrap.kind_cluster.clone();
                     println!(">>> Deleting kind management cluster '{name}'...");
+                    // Mirror the sibling delete sites (local-host teardown,
+                    // pivot, bootstrap --recreate): a toolbox run leaves the
+                    // kind network before the delete. kind 0.33.0's delete
+                    // removes the node containers but not the Docker network,
+                    // so the leave is detach hygiene so the toolbox container
+                    // is not attached when the nodes go away. Best-effort: a
+                    // failed leave must not block the delete.
+                    if cfg.toolbox {
+                        if let Some(engine) = detect_engine(cfg).await {
+                            toolbox_leave_kind_network(cfg, &engine).await;
+                        }
+                    }
                     if run("kind", &["delete", "cluster", "--name", &name])
                         .await
                         .is_ok()
@@ -2243,12 +2256,13 @@ fn should_join_kind_network(cfg: &Config, engine: Option<&str>) -> Option<String
 /// pre-pivot kind host was always discovered `Unreachable` from the toolbox
 /// and the whole k8s side was silently skipped.
 ///
-/// Best-effort, never fatal: `kind delete cluster` removes the network with
-/// the last node, so a re-run against an already gone cluster must not abort
-/// here and must still be able to run the AWS orphan sweep (the documented
-/// AWS-only recovery). A join failure simply leaves discovery to report
-/// `Unreachable`, which the caller turns into the loud (non-`AWS_ONLY`)
-/// outcome.
+/// Best-effort, never fatal: a re-run against an already gone cluster must
+/// not abort here and must still be able to run the AWS orphan sweep (the
+/// documented AWS-only recovery). A join failure simply leaves discovery to
+/// report `Unreachable`, which the caller turns into the loud (non-`AWS_ONLY`)
+/// outcome. kind 0.33.0's `delete cluster` removes the node containers but
+/// not the Docker network, so the mirrored Step 9 leave is detach hygiene,
+/// not network cleanup.
 pub(crate) async fn ensure_kind_network_for_discovery(cfg: &Config) {
     // A host run already resolves the kind endpoint from its default network,
     // so only a toolbox run needs the join (mirrors the bootstrap aws path and
