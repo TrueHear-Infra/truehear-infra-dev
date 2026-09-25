@@ -6,7 +6,7 @@ What it does in one line: a throwaway local kind cluster runs Flux, Flux provisi
 
 The topology this runbook targets (staging branch, the #4 commit series):
 
-- One region (`eu-north-1`), two EKS clusters, all EKS 1.34.6, 20 GiB gp3 roots, on-demand:
+- One region (`eu-north-1`), two EKS clusters, all EKS 1.36.4, 20 GiB gp3 roots, on-demand:
   - `eu-north-1-management` (the self-managed management cluster): 2 x t4g.medium (ARM), min 2 / max 3, AZs eu-north-1a/b/c.
   - `eu-north-1-staging` (EKS name `default_eu-north-1-staging-control-plane`): 3 x t3.medium, min 3 / max 4.
 - Each workload cluster has its own VPC (CAPA creates one per AWSManagedCluster) and its own Flux instance. The 3-node worker floor is a hard requirement, not a cost choice: Vault needs one member per zone and the RabbitMQ chart one member per node, so scaling below three leaves those StatefulSets Pending.

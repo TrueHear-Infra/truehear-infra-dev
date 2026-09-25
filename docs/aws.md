@@ -20,7 +20,7 @@ levels, sizing, and the per-environment operator steps.
 |---|---|
 | `eu-north-1` | `eu-north-1-management` (the self-managed management cluster, provisioned by the pivot) and `eu-north-1-staging` |
 
-Every cluster is an EKS control plane (EKS 1.34.6). The management cluster
+Every cluster is an EKS control plane (EKS 1.36.4). The management cluster
 runs one ARM (Graviton2) `AWSManagedMachinePool` at the cheapest offered
 2 vCPU / 4 GiB shape (2 x t4g.medium, min 2 / max 3); the TrueHear workload
 clusters run one x86 pool each (3 x t3.medium, min 3 / max 4, three AZs
