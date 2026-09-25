@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: truehear-backend
+  namespace: backend
+  labels:
+    app.kubernetes.io/name: truehear-backend
+    app.kubernetes.io/part-of: truehear-platform
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: truehear-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: truehear-backend
+        app.kubernetes.io/part-of: truehear-platform
+    spec:
+      serviceAccountName: truehear-backend
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: ghcr-credentials
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: ghcr.io/truehear/truehearv3-backend@sha256:0fc89c43c2aa651be2efe7afbdeeb2df3cee2783353eba49760c53932edf7cc5
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ENV_FILE
+              value: .env
+            - name: NODE_ENV
+              value: development
+          ports:
+            - name: http
+              containerPort: 8887
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /api/truehear/v2/health/live
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /api/truehear/v2/health/ready
+              port: http
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/truehear/v2/health/live
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: backend-config
+              mountPath: /app/.env
+              subPath: .env
+              readOnly: true
+            - name: ca-bundle
+              mountPath: /etc/truehear/tls/ca.crt
+              subPath: ca.crt
+              readOnly: true
+            - name: vault-jwt
+              mountPath: /var/run/secrets/vault
+              readOnly: true
+      volumes:
+        - name: backend-config
+          configMap:
+            name: truehear-backend-config
+        - name: ca-bundle
+          configMap:
+            name: truehear-ca-bundle
+        - name: vault-jwt
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: vault
+                  expirationSeconds: 3600

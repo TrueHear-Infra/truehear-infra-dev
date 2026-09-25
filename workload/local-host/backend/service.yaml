@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: truehear-backend
+  namespace: backend
+  labels:
+    app.kubernetes.io/name: truehear-backend
+    app.kubernetes.io/part-of: truehear-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: truehear-backend
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8887
+      targetPort: http

@@ -3,3 +3,8 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - serviceaccount.yaml
+  - ghcr-credentials.sops.yaml
+  - ca-bundle.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml

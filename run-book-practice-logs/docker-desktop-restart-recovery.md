@@ -26,8 +26,9 @@ For the older, general IP-drift procedure, see
 - [Step 9: Repair CAPI cluster endpoints](#step-9-repair-capi-cluster-endpoints)
 - [Step 10: Verify Flux and storage](#step-10-verify-flux-and-storage)
 - [Step 11: Recover RabbitMQ](#step-11-recover-rabbitmq)
-- [Step 12: Unseal Vault](#step-12-unseal-vault)
-- [Step 13: Verify the complete environment](#step-13-verify-the-complete-environment)
+- [Step 12: Recover Redis cluster membership](#step-12-recover-redis-cluster-membership)
+- [Step 13: Unseal Vault](#step-13-unseal-vault)
+- [Step 14: Verify the complete environment](#step-14-verify-the-complete-environment)
 - [Troubleshooting map](#troubleshooting-map)
 - [Repository changes made](#repository-changes-made)
 - [Final checklist](#final-checklist)
@@ -51,6 +52,7 @@ The restart caused several related failures:
    balancer addresses.
 7. Vault restarted in its normal sealed state.
 8. RabbitMQ exposed a restart bug in its config init container.
+9. Redis retained the old Pod IPs in its persisted cluster membership.
 
 The main API server error was:
 
@@ -68,6 +70,14 @@ The RabbitMQ init error was:
 
 ```text
 cp: cannot create regular file '/etc/rabbitmq/rabbitmq.conf': Permission denied
+```
+
+The Redis symptom was:
+
+```text
+cluster_state:fail
+cluster_slots_ok:0
+cluster_slots_pfail:16384
 ```
 
 ## Recovery result
@@ -730,7 +740,159 @@ kubectl exec --namespace rabbitmq rabbitmq-0 -- \
 The expected result is three disk nodes, three running nodes, no alarms, and
 no network partitions.
 
-## Step 12: Unseal Vault
+## Step 12: Recover Redis cluster membership
+
+### Why Redis Pods were Running while the cluster was down
+
+All six Redis Pods showed `1/1 Running`, but `CLUSTER INFO` reported:
+
+```text
+cluster_state:fail
+cluster_slots_assigned:16384
+cluster_slots_ok:0
+cluster_slots_pfail:16384
+cluster_known_nodes:6
+```
+
+Docker recreated the Pod network sandboxes with new IP addresses. Redis kept
+the previous peer IPs in its persistent `/data/nodes.conf` file.
+
+During this incident:
+
+| Address set        | Values                         |
+| ------------------ | ------------------------------ |
+| Current Pod IPs    | `192.168.1.3` through `.8`     |
+| Persisted peer IPs | `192.168.1.47` through `.51`   |
+
+Each Redis process was healthy by itself, but the nodes could not exchange
+cluster-bus traffic with the old addresses. Kubernetes Pod readiness therefore
+did not prove that Redis Cluster was healthy.
+
+Inspect the current Pods and cluster membership:
+
+```bash
+KUBECONFIG="$PWD/local-workload.kubeconfig" \
+kubectl get pods --namespace redis --output=wide
+
+KUBECONFIG="$PWD/local-workload.kubeconfig" \
+kubectl exec --namespace redis redis-0 -- sh -ec '
+  IFS=" " read -r directive REDISCLI_AUTH \
+    < /etc/redis/auth/redis-auth.conf
+  export REDISCLI_AUTH
+
+  redis-cli -e \
+    --tls \
+    --cacert /etc/redis/tls/ca.crt \
+    -h redis-0.redis-headless.redis.svc.cluster.local \
+    CLUSTER NODES
+'
+```
+
+Compare the addresses from `CLUSTER NODES` with the Pod IPs. Continue only
+when the node IDs and slot assignments still exist but their peer addresses
+are stale.
+
+Do not delete `nodes.conf`, run `CLUSTER RESET`, or recreate the cluster. Those
+actions are unnecessary and can destroy the existing topology.
+
+Reconnect the existing node identities using the current Kubernetes DNS and
+Pod addresses:
+
+```bash
+for source in 0 1 2 3 4 5; do
+  echo "Refreshing peers from redis-${source}"
+
+  KUBECONFIG="$PWD/local-workload.kubeconfig" \
+  kubectl exec --namespace redis "redis-${source}" -- sh -ec '
+    IFS=" " read -r directive REDISCLI_AUTH \
+      < /etc/redis/auth/redis-auth.conf
+    test "$directive" = requirepass
+    test -n "$REDISCLI_AUTH"
+    export REDISCLI_AUTH
+
+    source_host="$(hostname).redis-headless.redis.svc.cluster.local"
+
+    for target in 0 1 2 3 4 5; do
+      target_host="redis-${target}.redis-headless.redis.svc.cluster.local"
+      test "$target_host" = "$source_host" && continue
+
+      target_ip="$(getent hosts "$target_host" | \
+        awk "NR == 1 { print \$1 }")"
+      test -n "$target_ip"
+
+      redis-cli -e \
+        --tls \
+        --cacert /etc/redis/tls/ca.crt \
+        -h "$source_host" \
+        CLUSTER MEET "$target_ip" 6379 16379
+    done
+  '
+done
+```
+
+This operation does not reset nodes, slots, or stored data. It allows the
+existing node IDs to learn their peers' current addresses. Redis may promote
+replicas while quorum is restored, so the master Pod ordinals can differ from
+the original layout.
+
+Wait approximately ten seconds, then verify every node:
+
+```bash
+sleep 10
+
+for source in 0 1 2 3 4 5; do
+  printf 'redis-%s: ' "$source"
+
+  KUBECONFIG="$PWD/local-workload.kubeconfig" \
+  kubectl exec --namespace redis "redis-${source}" -- sh -ec '
+    IFS=" " read -r directive REDISCLI_AUTH \
+      < /etc/redis/auth/redis-auth.conf
+    export REDISCLI_AUTH
+
+    redis-cli -e \
+      --tls \
+      --cacert /etc/redis/tls/ca.crt \
+      -h "$(hostname).redis-headless.redis.svc.cluster.local" \
+      CLUSTER INFO | tr "\r\n" " "
+  '
+
+  echo
+done
+```
+
+Every node must report:
+
+```text
+cluster_state:ok
+cluster_slots_assigned:16384
+cluster_slots_ok:16384
+cluster_slots_pfail:0
+cluster_slots_fail:0
+cluster_known_nodes:6
+cluster_size:3
+```
+
+Perform a final topology check:
+
+```bash
+KUBECONFIG="$PWD/local-workload.kubeconfig" \
+kubectl exec --namespace redis redis-0 -- sh -ec '
+  IFS=" " read -r directive REDISCLI_AUTH \
+    < /etc/redis/auth/redis-auth.conf
+  export REDISCLI_AUTH
+
+  redis-cli -e \
+    --tls \
+    --cacert /etc/redis/tls/ca.crt \
+    -h redis-0.redis-headless.redis.svc.cluster.local \
+    CLUSTER NODES
+'
+```
+
+The expected result is three connected masters, three connected replicas, all
+`16384` slots assigned, and no `fail` or `fail?` flags.
+
+## Step 13: Unseal Vault
 
 Vault sealing after a restart is expected when auto-unseal is not configured.
 Do not initialize Vault again.
@@ -754,7 +916,7 @@ kubectl get pods --namespace vault
 
 All three Pods should show `1/1 Running`.
 
-## Step 13: Verify the complete environment
+## Step 14: Verify the complete environment
 
 Verify management:
 
@@ -804,7 +966,8 @@ mise exec -- flux get all --all-namespaces
 | CAPI logs show old `.3` or `.5` endpoint          | CAPI runtime endpoints are stale          | Step 9        |
 | Flux cannot download a source-controller archive  | Workload Service routing is stale         | Step 10       |
 | RabbitMQ init reports permission denied            | Generated files cannot be overwritten     | Step 11       |
-| Vault Pods show `0/1 Running`                     | Vault is sealed after restart             | Step 12       |
+| Redis Pods run but every slot is `PFAIL`           | `nodes.conf` contains old Pod IPs          | Step 12       |
+| Vault Pods show `0/1 Running`                      | Vault is sealed after restart              | Step 13       |
 
 ## Repository changes made
 
@@ -835,6 +998,8 @@ application manifests and were not committed as desired steady state.
 - [ ] Flux controllers and reconciliations are Ready.
 - [ ] The storage provisioner is Running.
 - [ ] Redis has six Ready Pods.
+- [ ] Redis reports `cluster_state:ok` and all `16384` slots healthy.
+- [ ] Redis has three connected masters and three connected replicas.
 - [ ] RabbitMQ has three Ready Pods and no cluster partitions.
 - [ ] Vault has been unsealed and has three Ready Pods.
 - [ ] No PVC, cluster, or application data was deleted.

@@ -9,6 +9,8 @@ resources.
 
 Related operational guides:
 
+- [Local-host backend deployment](backend-local-host.md)
+- [Local backend load-balancing test](backend-load-balancing-test.md)
 - [Local-host Vault and backend authentication](vault-local-host.md)
 - [Local-host RabbitMQ](rabbitmq-local-host.md)
 - [Local-host Redis Cluster](redis-local-host.md)

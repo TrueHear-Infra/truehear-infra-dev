@@ -11,7 +11,13 @@ spec:
   wait: true
   dependsOn:
     - name: vault
+    - name: rabbitmq
+    - name: redis
   sourceRef:
     kind: OCIRepository
     name: flux-system
   path: ./workload/local-host/backend
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
